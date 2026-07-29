@@ -10,8 +10,11 @@ const SUBSCRIBER_SELECT = `
   *,
   owners(name),
   default_collector:collectors!default_collector_id(name),
-  services(name, sell_price, companies(name))
+  services(name, sell_price, companies(name)),
+  subscriber_addresses(line1, city, is_primary)
 `
+
+export type SubscriberSearchField = 'name' | 'id' | 'owner'
 
 export async function listSubscribersLite() {
   const { data, error } = await supabase
@@ -25,6 +28,8 @@ export async function listSubscribersLite() {
 export async function listSubscribers(
   filters: SubscriberFilters,
   serviceIdsForCompany: string[] | null,
+  searchField: SubscriberSearchField = 'name',
+  ownerIdsForSearch: string[] | null = null,
 ) {
   let query = supabase.from('subscribers').select(SUBSCRIBER_SELECT)
 
@@ -38,9 +43,18 @@ export async function listSubscribers(
   if (filters.status) query = query.eq('connection_status', filters.status)
   if (filters.expiryFrom) query = query.gte('expiry_date', filters.expiryFrom)
   if (filters.expiryTo) query = query.lte('expiry_date', filters.expiryTo)
-  if (filters.search.trim()) {
+
+  if (filters.search.trim() && searchField !== 'id') {
+    // 'id' search is applied client-side after fetch -- PostgREST doesn't
+    // support ilike against a uuid column even with a `column::text` cast
+    // filter (confirmed against the live project: "operator does not exist:
+    // uuid ~~* unknown").
     const term = filters.search.trim().replace(/[%,]/g, '')
-    query = query.or(`name.ilike.%${term}%,phone.ilike.%${term}%`)
+    if (searchField === 'owner') {
+      query = query.in('owner_id', ownerIdsForSearch && ownerIdsForSearch.length > 0 ? ownerIdsForSearch : [''])
+    } else {
+      query = query.ilike('name', `%${term}%`)
+    }
   }
 
   const { data, error } = await query.order('name')

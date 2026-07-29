@@ -20,6 +20,7 @@ export interface SubscriberWithRelations extends Subscriber {
   owners: { name: string } | null
   default_collector: { name: string } | null
   services: { name: string; sell_price: number; companies: { name: string } | null } | null
+  subscriber_addresses: { line1: string | null; city: string | null; is_primary: boolean }[]
 }
 
 export interface SubscriberAddress {
