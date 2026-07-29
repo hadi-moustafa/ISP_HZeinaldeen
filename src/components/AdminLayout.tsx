@@ -7,6 +7,7 @@ const tabs = [
   { to: '/admin/collectors', label: 'Collectors' },
   { to: '/admin/owners', label: 'Owners' },
   { to: '/admin/products', label: 'Products' },
+  { to: '/admin/import', label: 'Import' },
 ]
 
 export function AdminLayout() {

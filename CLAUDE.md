@@ -35,7 +35,8 @@ npm run preview
 - `src/components/ProtectedRoute.tsx` — auth gate, supports `adminOnly`
 - `src/lib/offline/db.ts` + `sync.ts` — Dexie schema + sync-queue flush (insertion order), used from `OfflinePage.tsx` (route `/field`)
 - `src/pages/ReceiptPage.tsx` — public, unauthenticated route `/receipt/:id`, the link shared via WhatsApp
-- `supabase/migrations/` — `0001_init.sql` (schema), `0002_invoicing.sql` (invoicing + `postpone_invoice` RPC), `0003_drop_whatsapp_column.sql` (reverted an earlier `whatsapp_sent_at` column after the WhatsApp pivot below)
+- `supabase/migrations/` — `0001_init.sql` (schema), `0002_invoicing.sql` (invoicing + `postpone_invoice` RPC), `0003_drop_whatsapp_column.sql` (reverted an earlier `whatsapp_sent_at` column after the WhatsApp pivot below), `0004_subscriber_import.sql` + `0005_import_address_line2.sql` (Excel import — see below)
+- `src/lib/api/import.ts` + `src/pages/admin/ImportPage.tsx` (route `/admin/import`) — one-way Excel → Supabase subscriber import, matching the ISP panel's own export format
 - `supabase/functions/generate-monthly-invoices/` — Edge Function: creates the month's invoices, skips suspended/cancelled subscribers, idempotent via unique constraint
 - `supabase/ops/schedule_invoice_cron.sql` — `pg_cron`/`pg_net` wiring to invoke the Edge Function monthly
 
@@ -68,6 +69,20 @@ npm run preview
 - **This sandbox cannot reach `public.ecr.aws`**, so `npx supabase functions deploy` hangs pulling the edge-runtime image. Same class of issue as any Docker-pull-based deploy here. Workaround used: deploy Edge Function code by pasting it into the Supabase Dashboard's function editor instead. Note the function's routing **slug is immutable after creation** — renaming only changes a display label; if the slug is wrong, delete and recreate rather than trying to rename.
 - Playwright's own browser download is also blocked by this sandbox's network. When visual QA is needed, launch against the system's installed Chrome instead: `chromium.launch({ executablePath: '/usr/bin/google-chrome', headless: true })`. Playwright itself is not a shipped dependency — install as a throwaway devDependency for a QA pass and uninstall afterward; don't leave it in `package.json`.
 - `gh auth login` and `npx supabase login` need an interactive browser flow this session can't do — ask the user to run those themselves in their own terminal rather than attempting non-interactive workarounds.
+
+## Excel import (`/admin/import`)
+
+One-way, admin-run, periodic import from the ISP panel's own Excel export (`Username, Name, Password, Address, Mobile, Note, Reseller, Expiry, Service, Blocked, Switch, Date Created, Price, Balance, Region, Building, Nationality, Mac Address, Collector`). Never touches invoices/payments — those stay owned by the app's own billing flow once a subscriber exists.
+
+- Dedupe key: `subscribers.external_username` (new unique column). New username → create; existing → update the ISP-sourced fields only.
+- `Blocked = 1` is imported as `suspended`, not `cancelled` (assumption flagged in the UI, not hard-coded certainty — ISP "blocked" most likely means temporary cut-off).
+- `Price`/`Balance` from the export are always 0 in real data and are **never used for billing** — the service/plan match (`Service` → `services.name`) is what feeds the existing invoice-generation Edge Function; amount owed is never written directly.
+- `Address`/`Region`/`Building` map to `subscriber_addresses.line1`/`region`/`line2` respectively (not `city` — the export has no city column).
+- `Password`/`Switch`/`Mac Address`/`Nationality` land in `subscribers.import_metadata jsonb` — a judgment call to avoid a schema change for low-value fields (nationality has no natural column; the network metadata isn't billing-relevant).
+- Preview step blocks confirmation on: unresolved `Reseller` (must map to an existing company — never auto-created), unresolved `Service` (map to existing or create new with a price), and duplicate usernames within the uploaded file (never silently deduped).
+- Commit is a single Postgres RPC (`import_subscribers_batch`, `supabase/migrations/0004_subscriber_import.sql` + `0005_import_address_line2.sql`), matching the `postpone_invoice()` pattern — one transaction, so a mid-import failure never leaves partial data.
+- Real bug caught during verification: SheetJS date cells land at local midnight, and `toISOString()` converts to UTC first — in Beirut (UTC+3) this silently rolled every imported expiry date back one day. Fixed by formatting dates with local getters (`formatDateLocal` in `src/lib/api/import.ts`), never `toISOString()`, for any date-only value.
+- Also: this project's Supabase migration history wasn't tracking migrations 0001–0003 (they'd been applied manually via the Dashboard during earlier phases, network-restricted `supabase functions deploy` era) — `supabase db push` tried to replay them and failed. Fixed once with `supabase migration repair --status applied 0001 0002 0003`; future `db push` calls should work normally from here.
 
 ## Data model notes
 

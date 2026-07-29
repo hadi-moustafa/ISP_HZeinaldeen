@@ -12,6 +12,8 @@ export interface Subscriber {
   expiry_date: string | null
   connection_date: string | null
   notes: string | null
+  external_username: string | null
+  import_metadata: Record<string, unknown>
   created_at: string
   updated_at: string
 }
