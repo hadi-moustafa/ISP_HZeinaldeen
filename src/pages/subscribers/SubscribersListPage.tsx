@@ -110,11 +110,11 @@ export function SubscribersListPage() {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
           Subscribers
         </h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button onClick={handleExport} className={secondaryButtonClass}>
             Export to Excel
           </button>
