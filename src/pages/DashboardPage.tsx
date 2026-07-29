@@ -1,4 +1,13 @@
+import { Link } from 'react-router-dom'
 import { useStaff } from '../context/StaffContext'
+
+const links = [
+  { to: '/admin/companies', label: 'Companies' },
+  { to: '/admin/services', label: 'Services' },
+  { to: '/admin/collectors', label: 'Collectors' },
+  { to: '/admin/owners', label: 'Owners' },
+  { to: '/admin/products', label: 'Products' },
+]
 
 export function DashboardPage() {
   const { staff, logout } = useStaff()
@@ -20,9 +29,20 @@ export function DashboardPage() {
         </button>
       </div>
 
-      <p className="mt-8 text-center text-neutral-500 dark:text-neutral-400">
-        Reference data, subscribers, and reporting land in the next phases.
-      </p>
+      <h2 className="mt-8 mb-3 text-sm font-semibold text-neutral-500 dark:text-neutral-400">
+        Reference data
+      </h2>
+      <div className="grid grid-cols-2 gap-3">
+        {links.map((link) => (
+          <Link
+            key={link.to}
+            to={link.to}
+            className="rounded-lg border border-neutral-200 bg-white p-4 text-center font-medium text-neutral-900 shadow-sm dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
+          >
+            {link.label}
+          </Link>
+        ))}
+      </div>
     </div>
   )
 }
