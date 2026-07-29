@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Plus, Download, Filter, Search, MoreVertical, ChevronDown } from 'lucide-react'
+import { Plus, Download, Filter, Search, MoreVertical, ChevronDown, Banknote } from 'lucide-react'
 import {
   listSubscribers,
   listDebtSubscriberIds,
@@ -12,11 +12,15 @@ import { listCollectors } from '../../lib/api/collectors'
 import { listCompanies } from '../../lib/api/companies'
 import { listServices } from '../../lib/api/services'
 import { listMonthlyLog } from '../../lib/api/reports'
+import { createPayment } from '../../lib/api/invoices'
 import type { SubscriberWithRelations } from '../../types/subscribers'
 import { emptyFilters } from '../../types/subscribers'
 import type { MonthlyLogRow } from '../../types/reports'
 import type { Owner, Collector, Company, ServiceWithCompany } from '../../types/reference'
-import { inputClass, labelClass, secondaryButtonClass } from '../../lib/uiClasses'
+import { useStaff } from '../../context/StaffContext'
+import { HeaderActions } from '../../components/AppHeader'
+import { Modal } from '../../components/Modal'
+import { inputClass, labelClass, secondaryButtonClass, primaryButtonClass } from '../../lib/uiClasses'
 import { exportToExcel } from '../../lib/exportExcel'
 
 type BillingKey = 'paid' | 'debt' | 'postponed' | 'none'
@@ -74,11 +78,24 @@ const SEARCH_FIELDS: { value: SubscriberSearchField; label: string }[] = [
 
 export function SubscribersListPage() {
   const navigate = useNavigate()
+  const { staff } = useStaff()
   const [filters, setFilters] = useState(emptyFilters)
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [searchField, setSearchField] = useState<SubscriberSearchField>('name')
   const [searchFieldMenuOpen, setSearchFieldMenuOpen] = useState(false)
   const [openCardMenuId, setOpenCardMenuId] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+  const [paymentSub, setPaymentSub] = useState<SubscriberWithRelations | null>(null)
+  const [paymentForm, setPaymentForm] = useState({
+    amount: '',
+    payment_date: new Date().toISOString().slice(0, 10),
+    method: 'cash',
+    collector_id: '',
+    note: '',
+  })
+  const [paymentError, setPaymentError] = useState<string | null>(null)
+  const [paymentSaving, setPaymentSaving] = useState(false)
 
   const [subscribers, setSubscribers] = useState<SubscriberWithRelations[]>([])
   const [loading, setLoading] = useState(true)
@@ -91,24 +108,22 @@ export function SubscribersListPage() {
   const [debtIds, setDebtIds] = useState<Set<string>>(new Set())
   const [monthlyLogBySubscriber, setMonthlyLogBySubscriber] = useState<Record<string, MonthlyLogRow>>({})
 
+  async function refreshBillingData() {
+    const [debt, log] = await Promise.all([listDebtSubscriberIds(), listMonthlyLog(currentPeriodMonth())])
+    setDebtIds(debt)
+    setMonthlyLogBySubscriber(Object.fromEntries(log.map((row) => [row.subscriber_id, row])))
+  }
+
   useEffect(() => {
-    Promise.all([
-      listOwners(),
-      listCollectors(),
-      listCompanies(),
-      listServices(),
-      listDebtSubscriberIds(),
-      listMonthlyLog(currentPeriodMonth()),
-    ])
-      .then(([o, c, comp, s, debt, log]) => {
+    Promise.all([listOwners(), listCollectors(), listCompanies(), listServices(), refreshBillingData()])
+      .then(([o, c, comp, s]) => {
         setOwners(o)
         setCollectors(c)
         setCompanies(comp)
         setServices(s)
-        setDebtIds(debt)
-        setMonthlyLogBySubscriber(Object.fromEntries(log.map((row) => [row.subscriber_id, row])))
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load filters'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const filteredServices = useMemo(
@@ -170,10 +185,20 @@ export function SubscribersListPage() {
     return value !== ''
   }).length
 
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   function handleExport() {
+    const rows = selectedIds.size > 0 ? subscribers.filter((s) => selectedIds.has(s.id)) : subscribers
     exportToExcel(
       'subscribers',
-      subscribers.map((s) => {
+      rows.map((s) => {
         const address = s.subscriber_addresses.find((a) => a.is_primary) ?? s.subscriber_addresses[0]
         return {
           Name: s.name,
@@ -189,6 +214,47 @@ export function SubscribersListPage() {
         }
       }),
     )
+  }
+
+  function openPaymentModal(sub: SubscriberWithRelations) {
+    setOpenCardMenuId(null)
+    const log = monthlyLogBySubscriber[sub.id]
+    const remaining = log ? Math.max(log.amount_due - log.amount_paid, 0) : 0
+    setPaymentError(null)
+    setPaymentForm({
+      amount: remaining ? String(remaining) : '',
+      payment_date: new Date().toISOString().slice(0, 10),
+      method: 'cash',
+      collector_id: sub.default_collector_id ?? '',
+      note: '',
+    })
+    setPaymentSub(sub)
+  }
+
+  async function submitPayment(e: FormEvent) {
+    e.preventDefault()
+    if (!paymentSub) return
+    const log = monthlyLogBySubscriber[paymentSub.id]
+    setPaymentSaving(true)
+    setPaymentError(null)
+    try {
+      await createPayment({
+        invoice_id: log?.invoice_id ?? null,
+        subscriber_id: paymentSub.id,
+        collector_id: paymentForm.collector_id || null,
+        amount: Number(paymentForm.amount),
+        payment_date: paymentForm.payment_date,
+        method: paymentForm.method,
+        note: paymentForm.note || null,
+        staff_id: staff?.id ?? null,
+      })
+      setPaymentSub(null)
+      await refreshBillingData()
+    } catch (err) {
+      setPaymentError(err instanceof Error ? err.message : 'Failed to log payment')
+    } finally {
+      setPaymentSaving(false)
+    }
   }
 
   async function handleDelete(sub: SubscriberWithRelations) {
@@ -216,26 +282,28 @@ export function SubscribersListPage() {
         />
       )}
 
-      <div className="mb-4 flex items-center gap-2">
-        <span className="h-5 w-1 rounded-full bg-indigo-500" />
-        <h1 className="text-lg font-bold text-neutral-900 dark:text-neutral-100">List Subscribers</h1>
-      </div>
-
-      <div className="mb-3 flex items-center gap-2">
-        <Link
-          to="/subscribers/new"
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-indigo-500 py-2.5 font-semibold text-white shadow-sm active:bg-indigo-600"
-        >
-          <Plus size={18} strokeWidth={2.5} />
-          Add Subscriber
-        </Link>
+      <HeaderActions>
         <button
           onClick={handleExport}
-          title="Export to Excel"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white dark:bg-neutral-700"
+          title={selectedIds.size > 0 ? `Export ${selectedIds.size} selected` : 'Export to Excel'}
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-900 text-white"
         >
-          <Download size={18} />
+          <Download size={16} />
         </button>
+      </HeaderActions>
+
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="h-5 w-1 rounded-full bg-indigo-500" />
+          <h1 className="text-lg font-bold text-neutral-900">List Subscribers</h1>
+        </div>
+        <Link
+          to="/subscribers/new"
+          title="Add subscriber"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-500 text-white shadow-sm active:bg-indigo-600"
+        >
+          <Plus size={18} strokeWidth={2.5} />
+        </Link>
       </div>
 
       <div className="relative mb-3">
@@ -314,8 +382,8 @@ export function SubscribersListPage() {
           <Search size={14} />
           Adv.{activeFilterCount > 0 && ` (${activeFilterCount})`}
         </button>
-        <div className="ml-auto shrink-0 rounded-full bg-rose-100 px-3 py-1.5 text-sm font-bold text-rose-700 dark:bg-rose-900 dark:text-rose-300">
-          Total: {subscribers.length}
+        <div className="ml-auto shrink-0 rounded-full bg-rose-100 px-3 py-1.5 text-sm font-bold text-rose-700">
+          {selectedIds.size > 0 ? `${selectedIds.size} selected` : `Total: ${subscribers.length}`}
         </div>
       </div>
 
@@ -459,9 +527,18 @@ export function SubscribersListPage() {
               className={`relative rounded-2xl border-l-4 bg-white p-4 shadow-sm dark:bg-neutral-800 ${style.border}`}
             >
               <div className="mb-2 flex items-center justify-between">
-                <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${style.pill}`}>
-                  #{sub.id.slice(0, 8)}
-                </span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(sub.id)}
+                    onChange={() => toggleSelect(sub.id)}
+                    aria-label={`Select ${sub.name}`}
+                    className="h-4 w-4 rounded border-neutral-300 text-indigo-600"
+                  />
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${style.pill}`}>
+                    #{sub.id.slice(0, 8)}
+                  </span>
+                </div>
                 <div className="flex items-center gap-2">
                   <span className="rounded-md bg-neutral-100 px-2 py-1 text-xs text-neutral-500 dark:bg-neutral-700 dark:text-neutral-400">
                     {formatDateTime(sub.updated_at)}
@@ -528,22 +605,33 @@ export function SubscribersListPage() {
                 </dd>
               </dl>
 
-              {log ? (
-                <div className="flex items-center gap-2">
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-700">
-                    <div
-                      className={`h-full rounded-full ${style.bar}`}
-                      style={{ width: `${Math.min(pct, 100)}%` }}
-                    />
-                  </div>
-                  <span className={`shrink-0 text-xs font-bold ${style.amount}`}>{pct}%</span>
-                  <span className="shrink-0 text-xs text-neutral-400">
-                    {log.amount_paid}/{log.amount_due}
-                  </span>
-                </div>
-              ) : (
-                <p className="text-xs text-neutral-400">No invoice this month</p>
-              )}
+              <div className="flex items-center gap-2">
+                {log ? (
+                  <>
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-700">
+                      <div
+                        className={`h-full rounded-full ${style.bar}`}
+                        style={{ width: `${Math.min(pct, 100)}%` }}
+                      />
+                    </div>
+                    <span className={`shrink-0 text-xs font-bold ${style.amount}`}>{pct}%</span>
+                    <span className="shrink-0 text-xs text-neutral-400">
+                      {log.amount_paid}/{log.amount_due}
+                    </span>
+                  </>
+                ) : (
+                  <p className="flex-1 text-xs text-neutral-400">No invoice this month</p>
+                )}
+                <button
+                  onClick={() => openPaymentModal(sub)}
+                  disabled={!log}
+                  title={log ? 'Log a payment' : 'No invoice this month'}
+                  className="flex shrink-0 items-center gap-1 rounded-full bg-emerald-500 px-2.5 py-1.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400"
+                >
+                  <Banknote size={13} />
+                  Pay
+                </button>
+              </div>
             </div>
           )
         })}
@@ -551,6 +639,69 @@ export function SubscribersListPage() {
           <p className="text-neutral-500 dark:text-neutral-400">No subscribers match these filters.</p>
         )}
       </div>
+
+      <Modal
+        open={Boolean(paymentSub)}
+        onClose={() => setPaymentSub(null)}
+        title={`Log payment · ${paymentSub?.name ?? ''}`}
+      >
+        <form onSubmit={submitPayment}>
+          {paymentError && <p className="mb-3 text-sm text-red-600">{paymentError}</p>}
+          <label className={labelClass}>Amount</label>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={paymentForm.amount}
+            onChange={(e) => setPaymentForm((f) => ({ ...f, amount: e.target.value }))}
+            className={`${inputClass} mb-4`}
+            required
+          />
+          <label className={labelClass}>Payment date</label>
+          <input
+            type="date"
+            value={paymentForm.payment_date}
+            onChange={(e) => setPaymentForm((f) => ({ ...f, payment_date: e.target.value }))}
+            className={`${inputClass} mb-4`}
+            required
+          />
+          <label className={labelClass}>Method</label>
+          <input
+            value={paymentForm.method}
+            onChange={(e) => setPaymentForm((f) => ({ ...f, method: e.target.value }))}
+            className={`${inputClass} mb-4`}
+          />
+          <label className={labelClass}>
+            Collector (who actually collected this — may differ from default)
+          </label>
+          <select
+            value={paymentForm.collector_id}
+            onChange={(e) => setPaymentForm((f) => ({ ...f, collector_id: e.target.value }))}
+            className={`${inputClass} mb-4`}
+          >
+            <option value="">None</option>
+            {collectors.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <label className={labelClass}>Note</label>
+          <input
+            value={paymentForm.note}
+            onChange={(e) => setPaymentForm((f) => ({ ...f, note: e.target.value }))}
+            className={`${inputClass} mb-4`}
+          />
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setPaymentSub(null)} className={secondaryButtonClass}>
+              Cancel
+            </button>
+            <button type="submit" disabled={paymentSaving} className={primaryButtonClass}>
+              {paymentSaving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   )
 }

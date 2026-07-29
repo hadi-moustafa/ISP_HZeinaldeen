@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* App is light-mode only for now. Tailwind's `dark:` variant defaults to
+   matching the OS's prefers-color-scheme; redefining it to a class selector
+   that's never applied disables every existing `dark:` utility across the
+   codebase without having to strip them from every file. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  color-scheme: light;
+}
+
 body {
   margin: 0;
 }

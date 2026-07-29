@@ -1,22 +1,34 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import { useStaff } from '../context/StaffContext'
 import { isAdmin } from '../lib/permissions'
 import { generateMonthlyInvoices } from '../lib/api/invoices'
-import { primaryButtonClass } from '../lib/uiClasses'
+import { getDashboardSummary, type DashboardSummary } from '../lib/api/reports'
+import { AppHeader } from '../components/AppHeader'
+import { DonutChart } from '../components/DonutChart'
+import { primaryButtonClass, cardClass } from '../lib/uiClasses'
 
-const links = [
-  { to: '/admin/companies', label: 'Companies' },
-  { to: '/admin/services', label: 'Services' },
-  { to: '/admin/collectors', label: 'Collectors' },
-  { to: '/admin/owners', label: 'Owners' },
-  { to: '/admin/products', label: 'Products' },
-]
+function currentPeriodMonth() {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+}
+
+function currentMonthLabel() {
+  return new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+}
 
 export function DashboardPage() {
-  const { staff, logout } = useStaff()
+  const { staff } = useStaff()
+  const [summary, setSummary] = useState<DashboardSummary | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
   const [generating, setGenerating] = useState(false)
   const [generateResult, setGenerateResult] = useState<string | null>(null)
+
+  useEffect(() => {
+    getDashboardSummary(currentPeriodMonth())
+      .then(setSummary)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load dashboard'))
+  }, [])
 
   async function handleGenerateInvoices() {
     setGenerating(true)
@@ -24,6 +36,7 @@ export function DashboardPage() {
     try {
       const result = await generateMonthlyInvoices()
       setGenerateResult(`Created ${result.created}, skipped ${result.skipped}.`)
+      setSummary(await getDashboardSummary(currentPeriodMonth()))
     } catch (err) {
       setGenerateResult(err instanceof Error ? err.message : 'Failed to generate invoices')
     } finally {
@@ -32,88 +45,72 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-50 p-4 dark:bg-neutral-900">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">Signed in as</p>
-          <p className="font-medium text-neutral-900 dark:text-neutral-100">
-            {staff?.username} ({staff?.role})
-          </p>
-        </div>
-        <button
-          onClick={logout}
-          className="rounded-md border border-neutral-300 px-4 py-2 text-sm dark:border-neutral-600 dark:text-neutral-100"
-        >
-          Log out
-        </button>
-      </div>
+    <div className="min-h-screen bg-neutral-50">
+      <AppHeader>
+        <main className="p-4">
+          <h1 className="mb-1 text-lg font-semibold text-neutral-900">Dashboard</h1>
+          <p className="mb-4 text-sm text-neutral-500">{currentMonthLabel()}</p>
 
-      <Link
-        to="/field"
-        className="mt-8 block rounded-lg border border-green-200 bg-green-50 p-4 text-center font-medium text-green-700 shadow-sm dark:border-green-800 dark:bg-green-950 dark:text-green-300"
-      >
-        Field View (works offline)
-      </Link>
+          {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
 
-      <div className="mt-3 grid grid-cols-2 gap-3">
-        <Link
-          to="/subscribers"
-          className="block rounded-lg border border-blue-200 bg-blue-50 p-4 text-center font-medium text-blue-700 shadow-sm dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300"
-        >
-          Subscribers
-        </Link>
-        <Link
-          to="/reports/monthly-log"
-          className="block rounded-lg border border-blue-200 bg-blue-50 p-4 text-center font-medium text-blue-700 shadow-sm dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300"
-        >
-          Monthly Log
-        </Link>
-      </div>
+          {!summary && !error && <p className="text-sm text-neutral-500">Loading…</p>}
 
-      {isAdmin(staff) && (
-        <Link
-          to="/reports/financials"
-          className="mt-3 block rounded-lg border border-purple-200 bg-purple-50 p-4 text-center font-medium text-purple-700 shadow-sm dark:border-purple-800 dark:bg-purple-950 dark:text-purple-300"
-        >
-          Financial Report
-        </Link>
-      )}
+          {summary && (
+            <>
+              <div className={`${cardClass} mb-3 flex items-center gap-5`}>
+                <DonutChart
+                  segments={[
+                    { label: 'Collected', value: summary.totalPaid, color: '#10b981' },
+                    { label: 'Left to collect', value: summary.totalLeft, color: '#f43f5e' },
+                  ]}
+                />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div>
+                    <p className="text-xs text-neutral-500">Left to collect</p>
+                    <p className="text-2xl font-bold text-rose-600">{summary.totalLeft.toFixed(2)}</p>
+                  </div>
+                  <div className="flex items-center gap-3 text-sm">
+                    <span className="flex items-center gap-1.5 text-neutral-600">
+                      <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                      Collected {summary.totalPaid.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 text-sm">
+                    <span className="flex items-center gap-1.5 text-neutral-600">
+                      <span className="h-2.5 w-2.5 rounded-full bg-rose-500" />
+                      Outstanding {summary.totalLeft.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
 
-      {isAdmin(staff) && (
-        <div className="mt-4 rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-700 dark:bg-neutral-800">
-          <p className="mb-2 text-sm text-neutral-500 dark:text-neutral-400">
-            Invoices generate automatically on the 1st of each month. Use this to backfill or
-            re-run for the current month.
-          </p>
-          <button
-            onClick={handleGenerateInvoices}
-            disabled={generating}
-            className={primaryButtonClass}
-          >
-            {generating ? 'Generating…' : "Generate this month's invoices"}
-          </button>
-          {generateResult && (
-            <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-300">
-              {generateResult}
-            </p>
+              <div className="mb-4 grid grid-cols-2 gap-3">
+                <div className={cardClass}>
+                  <p className="text-2xl font-bold text-neutral-900">{summary.totalSubscribers}</p>
+                  <p className="text-xs text-neutral-500">Total subscribers</p>
+                </div>
+                <div className={cardClass}>
+                  <p className="text-2xl font-bold text-emerald-600">{summary.totalPaid.toFixed(2)}</p>
+                  <p className="text-xs text-neutral-500">Collected this month</p>
+                </div>
+              </div>
+            </>
           )}
-        </div>
-      )}
 
-      <h2 className="mt-8 mb-3 text-sm font-semibold text-neutral-500 dark:text-neutral-400">
-        Reference data
-      </h2>
-      <div className="grid grid-cols-2 gap-3">
-        {links.map((link) => (
-          <Link
-            key={link.to}
-            to={link.to}
-            className="rounded-lg border border-neutral-200 bg-white p-4 text-center font-medium text-neutral-900 shadow-sm dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
-          >
-            {link.label}
-          </Link>
-        ))}
-      </div>
+          {isAdmin(staff) && (
+            <div className={cardClass}>
+              <p className="mb-2 text-sm text-neutral-500">
+                Invoices generate automatically on the 1st of each month. Use this to backfill or
+                re-run for the current month.
+              </p>
+              <button onClick={handleGenerateInvoices} disabled={generating} className={primaryButtonClass}>
+                {generating ? 'Generating…' : "Generate this month's invoices"}
+              </button>
+              {generateResult && <p className="mt-2 text-sm text-neutral-600">{generateResult}</p>}
+            </div>
+          )}
+        </main>
+      </AppHeader>
     </div>
   )
 }

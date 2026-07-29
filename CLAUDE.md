@@ -19,13 +19,11 @@ Supabase project ref: `keivdjxabhvdaagrcbtg` (`https://keivdjxabhvdaagrcbtg.supa
 
 ## Commands
 
-```
+
 npm run dev      # vite dev server
 npm run build     # tsc -b && vite build -- always run before committing
 npm run lint      # oxlint
 npm run preview
-```
-
 ## Architecture
 
 - `src/lib/api/*.ts` — one file per domain (subscribers, invoices, movements, companies, services, collectors, owners, products, reports), each wrapping Supabase queries. Route/page components call these, never `supabase` directly.
@@ -103,6 +101,14 @@ One-way, admin-run, periodic import from the ISP panel's own Excel export (`User
 All 10 build-order phases from the kickoff doc (Setup → Auth → Reference data → Subscribers → Invoicing/payments → Inventory → Monthly log/financials/Excel export → Offline layer → Mobile polish → Deployment) are complete and live.
 
 The subscriber list (`src/pages/subscribers/SubscribersListPage.tsx`) was redesigned to match a client-provided mockup: pill-shaped controls, a Name/ID/Owner search-field selector, All/Debt/Adv. filter chips, status-colored left-border cards with a live payment-progress bar. All existing filter/export/data functionality was preserved underneath the new visuals.
+
+**App-wide chrome redesign (hamburger nav, light-mode-only, dashboard, subscriber list actions):**
+- `src/components/AppHeader.tsx` — shared header used by every layout (`AdminLayout`, `SubscribersLayout`, `ReportsLayout`, `DashboardPage`): hamburger button opens a slide-out drawer with every page link (grouped: main nav, then Reference data/admin section) and Log out at the bottom. Logout was removed from the old per-layout top-right corner and lives only in this drawer now.
+- `HeaderActions` (exported from `AppHeader.tsx`) is a small portal: a page rendered inside a layout's `<Outlet/>` can put a button next to the hamburger (e.g. Subscribers' Export button) via `<HeaderActions><button/></HeaderActions>` without prop-drilling through the layout. Context holds the header's action-slot DOM node; `createPortal` renders into it.
+- **Light mode is forced app-wide** via `src/index.css`: `@custom-variant dark (&:where(.dark, .dark *));` redefines Tailwind's `dark:` variant from the OS `prefers-color-scheme` media query to a class selector that's never applied, so every existing `dark:` utility class across the codebase is inert without having to strip them file-by-file. Verified live with the browser forced to `prefers-color-scheme: dark` — the app stayed light.
+- Dashboard (`DashboardPage.tsx`) replaced its link-grid (now redundant with the hamburger) with: a hand-rolled conic-gradient donut chart (`src/components/DonutChart.tsx`, no charting library) showing collected vs. left-to-collect for the current billing month, a total-subscribers counter, and a collected-this-month counter. Figures are **current month**, matching the `monthly_log` semantics used everywhere else (not all-time totals) — sourced from `getDashboardSummary()` in `src/lib/api/reports.ts`.
+- Subscriber list: Add button shrank to an icon-only circular `+`; Export moved into the header via `HeaderActions`; each card gained a top-left checkbox (wired to Export — exports only the selected rows when any are selected, otherwise the current filtered list) and a Pay button (opens the same payment-logging modal pattern as `InvoicesSection`/`OfflinePage`, disabled when the subscriber has no invoice for the current period).
+- `monthly_log` view gained a trailing `invoice_id` column (`0006_monthly_log_invoice_id.sql`) so the list's Pay button can log a payment against the correct invoice without a second round-trip per row. Real gotcha hit live: `CREATE OR REPLACE VIEW` only allows *appending* trailing columns — putting `invoice_id` first in the SELECT list failed against the real project; it has to go last.
 
 ### Known open item
 
