@@ -29,6 +29,13 @@ export function DashboardPage() {
         </button>
       </div>
 
+      <Link
+        to="/subscribers"
+        className="mt-8 block rounded-lg border border-blue-200 bg-blue-50 p-4 text-center font-medium text-blue-700 shadow-sm dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300"
+      >
+        Subscribers
+      </Link>
+
       <h2 className="mt-8 mb-3 text-sm font-semibold text-neutral-500 dark:text-neutral-400">
         Reference data
       </h2>
