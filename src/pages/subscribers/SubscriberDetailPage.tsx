@@ -9,7 +9,10 @@ import {
   deleteSubscriberAddress,
 } from '../../lib/api/subscribers'
 import type { SubscriberAddress, SubscriberWithRelations } from '../../types/subscribers'
+import type { Collector } from '../../types/reference'
+import { listCollectors } from '../../lib/api/collectors'
 import { Modal } from '../../components/Modal'
+import { InvoicesSection } from '../../components/subscriber/InvoicesSection'
 import {
   inputClass,
   labelClass,
@@ -41,6 +44,7 @@ export function SubscriberDetailPage() {
 
   const [subscriber, setSubscriber] = useState<SubscriberWithRelations | null>(null)
   const [addresses, setAddresses] = useState<SubscriberAddress[]>([])
+  const [collectors, setCollectors] = useState<Collector[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -53,9 +57,14 @@ export function SubscriberDetailPage() {
     setLoading(true)
     setError(null)
     try {
-      const [sub, addr] = await Promise.all([getSubscriber(id), listSubscriberAddresses(id)])
+      const [sub, addr, cols] = await Promise.all([
+        getSubscriber(id),
+        listSubscriberAddresses(id),
+        listCollectors(),
+      ])
       setSubscriber(sub)
       setAddresses(addr)
+      setCollectors(cols)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load subscriber')
     } finally {
@@ -337,6 +346,12 @@ export function SubscriberDetailPage() {
           </div>
         </form>
       </Modal>
+
+      <InvoicesSection
+        subscriberId={subscriber.id}
+        defaultCollectorId={subscriber.default_collector_id}
+        collectors={collectors}
+      />
     </div>
   )
 }
