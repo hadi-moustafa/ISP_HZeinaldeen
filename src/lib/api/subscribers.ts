@@ -13,6 +13,15 @@ const SUBSCRIBER_SELECT = `
   services(name, sell_price, companies(name))
 `
 
+export async function listSubscribersLite() {
+  const { data, error } = await supabase
+    .from('subscribers')
+    .select('id, name')
+    .order('name')
+  if (error) throw error
+  return data as { id: string; name: string }[]
+}
+
 export async function listSubscribers(
   filters: SubscriberFilters,
   serviceIdsForCompany: string[] | null,
