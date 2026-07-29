@@ -1,10 +1,26 @@
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { StaffProvider } from './context/StaffContext'
+import { ProtectedRoute } from './components/ProtectedRoute'
+import { LoginPage } from './pages/LoginPage'
+import { DashboardPage } from './pages/DashboardPage'
+
 function App() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-white p-4 dark:bg-neutral-900">
-      <p className="text-center text-neutral-600 dark:text-neutral-300">
-        ISP Manager — Phase 1 scaffold. Auth and routing land in Phase 2.
-      </p>
-    </div>
+    <StaffProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </BrowserRouter>
+    </StaffProvider>
   )
 }
 
