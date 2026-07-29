@@ -23,9 +23,7 @@ export function DashboardPage() {
     setGenerateResult(null)
     try {
       const result = await generateMonthlyInvoices()
-      setGenerateResult(
-        `Created ${result.created}, skipped ${result.skipped}, WhatsApp sent ${result.whatsappSent}, WhatsApp failed ${result.whatsappFailed}.`,
-      )
+      setGenerateResult(`Created ${result.created}, skipped ${result.skipped}.`)
     } catch (err) {
       setGenerateResult(err instanceof Error ? err.message : 'Failed to generate invoices')
     } finally {
@@ -50,12 +48,29 @@ export function DashboardPage() {
         </button>
       </div>
 
-      <Link
-        to="/subscribers"
-        className="mt-8 block rounded-lg border border-blue-200 bg-blue-50 p-4 text-center font-medium text-blue-700 shadow-sm dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300"
-      >
-        Subscribers
-      </Link>
+      <div className="mt-8 grid grid-cols-2 gap-3">
+        <Link
+          to="/subscribers"
+          className="block rounded-lg border border-blue-200 bg-blue-50 p-4 text-center font-medium text-blue-700 shadow-sm dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300"
+        >
+          Subscribers
+        </Link>
+        <Link
+          to="/reports/monthly-log"
+          className="block rounded-lg border border-blue-200 bg-blue-50 p-4 text-center font-medium text-blue-700 shadow-sm dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300"
+        >
+          Monthly Log
+        </Link>
+      </div>
+
+      {isAdmin(staff) && (
+        <Link
+          to="/reports/financials"
+          className="mt-3 block rounded-lg border border-purple-200 bg-purple-50 p-4 text-center font-medium text-purple-700 shadow-sm dark:border-purple-800 dark:bg-purple-950 dark:text-purple-300"
+        >
+          Financial Report
+        </Link>
+      )}
 
       {isAdmin(staff) && (
         <div className="mt-4 rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-700 dark:bg-neutral-800">

@@ -6,6 +6,7 @@ import type { Product } from '../../types/reference'
 import type { MovementType, ProductMovementWithSubscriber } from '../../types/movements'
 import { useStaff } from '../../context/StaffContext'
 import { Modal } from '../../components/Modal'
+import { exportToExcel } from '../../lib/exportExcel'
 import {
   inputClass,
   labelClass,
@@ -190,15 +191,37 @@ export function ProductsPage() {
     }
   }
 
+  function handleExport() {
+    exportToExcel(
+      'products',
+      products.map((p) => ({
+        Name: p.name,
+        SKU: p.sku ?? '',
+        Category: p.category ?? '',
+        'Cost Price': p.cost_price,
+        'Sell Price': p.sell_price,
+        'Quantity In Stock': p.quantity_in_stock,
+        'Reorder Level': p.reorder_level,
+        Unit: p.unit,
+        Active: p.is_active ? 'Yes' : 'No',
+      })),
+    )
+  }
+
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
           Products
         </h1>
-        <button onClick={openCreate} className={primaryButtonClass}>
-          + New product
-        </button>
+        <div className="flex gap-2">
+          <button onClick={handleExport} className={secondaryButtonClass}>
+            Export to Excel
+          </button>
+          <button onClick={openCreate} className={primaryButtonClass}>
+            + New product
+          </button>
+        </div>
       </div>
 
       {error && <p className="mb-4 text-sm text-red-600 dark:text-red-400">{error}</p>}

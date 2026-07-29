@@ -3,6 +3,7 @@ import { StaffProvider } from './context/StaffContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AdminLayout } from './components/AdminLayout'
 import { SubscribersLayout } from './components/SubscribersLayout'
+import { ReportsLayout } from './components/ReportsLayout'
 import { LoginPage } from './pages/LoginPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { ReceiptPage } from './pages/ReceiptPage'
@@ -14,6 +15,8 @@ import { ProductsPage } from './pages/admin/ProductsPage'
 import { SubscribersListPage } from './pages/subscribers/SubscribersListPage'
 import { SubscriberFormPage } from './pages/subscribers/SubscriberFormPage'
 import { SubscriberDetailPage } from './pages/subscribers/SubscriberDetailPage'
+import { MonthlyLogPage } from './pages/reports/MonthlyLogPage'
+import { FinancialsPage } from './pages/reports/FinancialsPage'
 
 function App() {
   return (
@@ -56,6 +59,24 @@ function App() {
             <Route path="new" element={<SubscriberFormPage />} />
             <Route path=":id" element={<SubscriberDetailPage />} />
             <Route path=":id/edit" element={<SubscriberFormPage />} />
+          </Route>
+          <Route
+            path="/reports"
+            element={
+              <ProtectedRoute>
+                <ReportsLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="monthly-log" element={<MonthlyLogPage />} />
+            <Route
+              path="financials"
+              element={
+                <ProtectedRoute adminOnly>
+                  <FinancialsPage />
+                </ProtectedRoute>
+              }
+            />
           </Route>
         </Routes>
       </BrowserRouter>

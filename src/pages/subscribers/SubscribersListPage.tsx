@@ -9,6 +9,7 @@ import type { SubscriberWithRelations } from '../../types/subscribers'
 import { emptyFilters } from '../../types/subscribers'
 import type { Owner, Collector, Company, ServiceWithCompany } from '../../types/reference'
 import { inputClass, labelClass, primaryButtonClass, secondaryButtonClass, cardClass } from '../../lib/uiClasses'
+import { exportToExcel } from '../../lib/exportExcel'
 
 const statusBadgeClass: Record<string, string> = {
   active: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
@@ -90,15 +91,37 @@ export function SubscribersListPage() {
     return value !== ''
   }).length
 
+  function handleExport() {
+    exportToExcel(
+      'subscribers',
+      subscribers.map((s) => ({
+        Name: s.name,
+        Phone: s.phone ?? '',
+        Service: s.services?.name ?? '',
+        Company: s.services?.companies?.name ?? '',
+        Owner: s.owners?.name ?? '',
+        'Default Collector': s.default_collector?.name ?? '',
+        Status: s.connection_status,
+        'Expiry Date': s.expiry_date ?? '',
+        'In Debt': debtIds.has(s.id) ? 'Yes' : 'No',
+      })),
+    )
+  }
+
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
           Subscribers
         </h1>
-        <Link to="/subscribers/new" className={primaryButtonClass}>
-          + New subscriber
-        </Link>
+        <div className="flex gap-2">
+          <button onClick={handleExport} className={secondaryButtonClass}>
+            Export to Excel
+          </button>
+          <Link to="/subscribers/new" className={primaryButtonClass}>
+            + New subscriber
+          </Link>
+        </div>
       </div>
 
       <div className="mb-4">
