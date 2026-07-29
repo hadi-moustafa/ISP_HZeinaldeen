@@ -349,6 +349,8 @@ export function SubscriberDetailPage() {
 
       <InvoicesSection
         subscriberId={subscriber.id}
+        subscriberName={subscriber.name}
+        subscriberPhone={subscriber.phone}
         defaultCollectorId={subscriber.default_collector_id}
         collectors={collectors}
       />

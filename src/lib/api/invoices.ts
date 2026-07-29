@@ -1,5 +1,11 @@
 import { supabase } from '../supabase'
-import type { Invoice, Payment, PaymentWithCollector } from '../../types/invoices'
+import type {
+  Invoice,
+  InvoiceReceipt,
+  Payment,
+  PaymentWithCollector,
+  ReceiptPayment,
+} from '../../types/invoices'
 
 export async function listInvoicesForSubscriber(subscriberId: string) {
   const { data, error } = await supabase
@@ -59,10 +65,26 @@ export async function generateMonthlyInvoices() {
   return data
 }
 
-export async function resendInvoiceWhatsApp(invoiceId: string) {
-  const { data, error } = await supabase.functions.invoke('send-invoice-whatsapp', {
-    body: { invoiceId },
-  })
+// Public/unauthenticated lookup for the shareable receipt page. Safe under
+// v1's intentionally-open RLS since the invoice UUID is unguessable; revisit
+// once RLS is tightened (see schema_v2.sql's note on that).
+export async function getInvoiceReceipt(invoiceId: string) {
+  const { data: invoice, error } = await supabase
+    .from('invoices')
+    .select('*, subscribers(name, phone), services(name, companies(name))')
+    .eq('id', invoiceId)
+    .single()
   if (error) throw error
-  return data
+
+  const { data: payments, error: paymentsError } = await supabase
+    .from('payments')
+    .select('amount, payment_date, method')
+    .eq('invoice_id', invoiceId)
+    .order('payment_date', { ascending: false })
+  if (paymentsError) throw paymentsError
+
+  return {
+    invoice: invoice as unknown as InvoiceReceipt,
+    payments: (payments ?? []) as ReceiptPayment[],
+  }
 }

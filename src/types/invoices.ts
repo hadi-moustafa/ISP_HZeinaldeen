@@ -9,7 +9,6 @@ export interface Invoice {
   due_date: string | null
   postponed_to: string | null
   status: InvoiceStatus
-  whatsapp_sent_at: string | null
   created_at: string
   updated_at: string
 }
@@ -29,4 +28,21 @@ export interface Payment {
 
 export interface PaymentWithCollector extends Payment {
   collectors: { name: string } | null
+}
+
+export interface InvoiceReceipt {
+  id: string
+  period_month: string
+  amount_due: number
+  due_date: string | null
+  postponed_to: string | null
+  status: InvoiceStatus
+  subscribers: { name: string; phone: string | null } | null
+  services: { name: string; companies: { name: string } | null } | null
+}
+
+export interface ReceiptPayment {
+  amount: number
+  payment_date: string
+  method: string
 }

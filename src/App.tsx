@@ -5,6 +5,7 @@ import { AdminLayout } from './components/AdminLayout'
 import { SubscribersLayout } from './components/SubscribersLayout'
 import { LoginPage } from './pages/LoginPage'
 import { DashboardPage } from './pages/DashboardPage'
+import { ReceiptPage } from './pages/ReceiptPage'
 import { CompaniesPage } from './pages/admin/CompaniesPage'
 import { ServicesPage } from './pages/admin/ServicesPage'
 import { CollectorsPage } from './pages/admin/CollectorsPage'
@@ -20,6 +21,7 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/receipt/:id" element={<ReceiptPage />} />
           <Route
             path="/"
             element={

@@ -4,7 +4,6 @@ import {
   listPaymentsForInvoice,
   createPayment,
   postponeInvoice,
-  resendInvoiceWhatsApp,
 } from '../../lib/api/invoices'
 import type { Invoice, PaymentWithCollector } from '../../types/invoices'
 import type { Collector } from '../../types/reference'
@@ -28,10 +27,14 @@ const statusBadgeClass: Record<string, string> = {
 
 export function InvoicesSection({
   subscriberId,
+  subscriberName,
+  subscriberPhone,
   defaultCollectorId,
   collectors,
 }: {
   subscriberId: string
+  subscriberName: string
+  subscriberPhone: string | null
   defaultCollectorId: string | null
   collectors: Collector[]
 }) {
@@ -54,8 +57,6 @@ export function InvoicesSection({
 
   const [postponeModalInvoice, setPostponeModalInvoice] = useState<Invoice | null>(null)
   const [postponeForm, setPostponeForm] = useState({ new_due_date: '', reason: '' })
-
-  const [sendingWhatsApp, setSendingWhatsApp] = useState<string | null>(null)
 
   async function refresh() {
     setLoading(true)
@@ -146,17 +147,16 @@ export function InvoicesSection({
     }
   }
 
-  async function resendWhatsApp(invoice: Invoice) {
-    setSendingWhatsApp(invoice.id)
-    setError(null)
-    try {
-      await resendInvoiceWhatsApp(invoice.id)
-      await refresh()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send WhatsApp message')
-    } finally {
-      setSendingWhatsApp(null)
+  function shareViaWhatsApp(invoice: Invoice) {
+    if (!subscriberPhone) {
+      setError('Subscriber has no phone number on file')
+      return
     }
+    const digits = subscriberPhone.replace(/[^\d]/g, '')
+    const receiptUrl = `${window.location.origin}/receipt/${invoice.id}`
+    const message = `Hi ${subscriberName}, here's your receipt for ${invoice.period_month}: ${receiptUrl}`
+    const waUrl = `https://wa.me/${digits}?text=${encodeURIComponent(message)}`
+    window.open(waUrl, '_blank', 'noopener,noreferrer')
   }
 
   return (
@@ -180,11 +180,6 @@ export function InvoicesSection({
                   Due {invoice.amount_due}
                   {invoice.postponed_to && ` · postponed to ${invoice.postponed_to}`}
                 </p>
-                <p className="text-xs text-neutral-400 dark:text-neutral-500">
-                  {invoice.whatsapp_sent_at
-                    ? `WhatsApp sent ${new Date(invoice.whatsapp_sent_at).toLocaleDateString()}`
-                    : 'WhatsApp not sent'}
-                </p>
               </div>
               <span
                 className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${statusBadgeClass[invoice.status]}`}
@@ -200,12 +195,8 @@ export function InvoicesSection({
               <button onClick={() => openPostponeModal(invoice)} className={secondaryButtonClass}>
                 Postpone
               </button>
-              <button
-                onClick={() => resendWhatsApp(invoice)}
-                disabled={sendingWhatsApp === invoice.id}
-                className={secondaryButtonClass}
-              >
-                {sendingWhatsApp === invoice.id ? 'Sending…' : 'Send WhatsApp'}
+              <button onClick={() => shareViaWhatsApp(invoice)} className={secondaryButtonClass}>
+                Share via WhatsApp
               </button>
               <button
                 onClick={() => toggleExpand(invoice.id)}

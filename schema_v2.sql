@@ -230,7 +230,6 @@ CREATE TABLE invoices (
     postponed_to  DATE,
     status        TEXT NOT NULL DEFAULT 'unpaid'
                     CHECK (status IN ('unpaid', 'partial', 'paid', 'postponed', 'waived')),
-    whatsapp_sent_at TIMESTAMPTZ, -- set once the WhatsApp invoice notification succeeds
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (subscriber_id, period_month)

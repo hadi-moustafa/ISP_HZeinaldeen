@@ -1,9 +1,9 @@
-// Scheduled (via pg_cron, see supabase/migrations for the schedule) to run
+// Scheduled (via pg_cron, see supabase/ops/schedule_invoice_cron.sql) to run
 // on the 1st of each month. Also callable manually (admin "Generate this
 // month's invoices" button) -- safe to re-run since invoices has a
-// UNIQUE(subscriber_id, period_month) constraint and we upsert on conflict.
+// UNIQUE(subscriber_id, period_month) constraint and duplicate inserts are
+// simply skipped.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { sendInvoiceWhatsAppMessage } from '../_shared/whatsapp.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
 
   const { data: subscribers, error: subsError } = await supabase
     .from('subscribers')
-    .select('id, name, phone, service_id, services(sell_price)')
+    .select('id, service_id, services(sell_price)')
     .eq('connection_status', 'active')
     .not('service_id', 'is', null)
 
@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
     })
   }
 
-  const results = { created: 0, skipped: 0, whatsappSent: 0, whatsappFailed: 0 }
+  const results = { created: 0, skipped: 0 }
 
   for (const sub of subscribers ?? []) {
     const service = sub.services as unknown as { sell_price: number } | null
@@ -43,47 +43,22 @@ Deno.serve(async (req) => {
       continue
     }
 
-    const { data: invoice, error: insertError } = await supabase
-      .from('invoices')
-      .insert({
-        subscriber_id: sub.id,
-        service_id: sub.service_id,
-        period_month: periodMonth,
-        amount_due: service.sell_price,
-        due_date: periodMonth,
-      })
-      .select()
-      .single()
+    const { error: insertError } = await supabase.from('invoices').insert({
+      subscriber_id: sub.id,
+      service_id: sub.service_id,
+      period_month: periodMonth,
+      amount_due: service.sell_price,
+      due_date: periodMonth,
+    })
 
     if (insertError) {
-      // Unique violation means this subscriber's invoice for this month
-      // already exists -- expected on a re-run, not a failure.
-      if (insertError.code === '23505') {
-        results.skipped++
-        continue
-      }
+      // Unique violation (23505) means this subscriber's invoice for this
+      // month already exists -- expected on a re-run, not a failure.
       results.skipped++
       continue
     }
 
     results.created++
-
-    if (sub.phone) {
-      const { ok } = await sendInvoiceWhatsAppMessage(sub.phone, {
-        subscriberName: sub.name,
-        amountDue: String(service.sell_price),
-        dueDate: periodMonth,
-      })
-      if (ok) {
-        results.whatsappSent++
-        await supabase
-          .from('invoices')
-          .update({ whatsapp_sent_at: new Date().toISOString() })
-          .eq('id', invoice.id)
-      } else {
-        results.whatsappFailed++
-      }
-    }
   }
 
   return new Response(JSON.stringify({ periodMonth, ...results }), {
