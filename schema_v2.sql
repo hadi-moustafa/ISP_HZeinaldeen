@@ -196,9 +196,8 @@ CREATE INDEX idx_subscribers_owner_id ON subscribers(owner_id);
 CREATE INDEX idx_subscribers_default_collector_id ON subscribers(default_collector_id);
 CREATE INDEX idx_subscribers_connection_status ON subscribers(connection_status);
 CREATE INDEX idx_subscribers_expiry_date ON subscribers(expiry_date);
-CREATE INDEX idx_subscribers_name_trgm ON subscribers USING gin (name gin_trgm_ops); -- requires pg_trgm, see below
-
 CREATE EXTENSION IF NOT EXISTS pg_trgm; -- enables fast partial-text search on subscriber name/phone
+CREATE INDEX idx_subscribers_name_trgm ON subscribers USING gin (name gin_trgm_ops);
 
 ALTER TABLE product_movements ADD CONSTRAINT fk_product_movements_subscriber
   FOREIGN KEY (subscriber_id) REFERENCES subscribers(id) ON DELETE SET NULL;
