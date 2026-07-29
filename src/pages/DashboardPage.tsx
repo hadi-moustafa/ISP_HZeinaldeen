@@ -48,7 +48,14 @@ export function DashboardPage() {
         </button>
       </div>
 
-      <div className="mt-8 grid grid-cols-2 gap-3">
+      <Link
+        to="/field"
+        className="mt-8 block rounded-lg border border-green-200 bg-green-50 p-4 text-center font-medium text-green-700 shadow-sm dark:border-green-800 dark:bg-green-950 dark:text-green-300"
+      >
+        Field View (works offline)
+      </Link>
+
+      <div className="mt-3 grid grid-cols-2 gap-3">
         <Link
           to="/subscribers"
           className="block rounded-lg border border-blue-200 bg-blue-50 p-4 text-center font-medium text-blue-700 shadow-sm dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300"

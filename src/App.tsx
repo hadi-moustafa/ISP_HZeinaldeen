@@ -17,6 +17,7 @@ import { SubscriberFormPage } from './pages/subscribers/SubscriberFormPage'
 import { SubscriberDetailPage } from './pages/subscribers/SubscriberDetailPage'
 import { MonthlyLogPage } from './pages/reports/MonthlyLogPage'
 import { FinancialsPage } from './pages/reports/FinancialsPage'
+import { OfflinePage } from './pages/OfflinePage'
 
 function App() {
   return (
@@ -78,6 +79,14 @@ function App() {
               }
             />
           </Route>
+          <Route
+            path="/field"
+            element={
+              <ProtectedRoute>
+                <OfflinePage />
+              </ProtectedRoute>
+            }
+          />
         </Routes>
       </BrowserRouter>
     </StaffProvider>
