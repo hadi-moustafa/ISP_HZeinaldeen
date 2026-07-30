@@ -72,19 +72,39 @@ function formatDateTime(iso: string) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-const SEARCH_FIELDS: { value: SubscriberSearchField; label: string }[] = [
+// Superset of the API's SubscriberSearchField: the free-text modes (name/id/
+// owner/username) map straight through to the API's search+searchField
+// mechanism; the rest (phone/nationalId/notes/collector/company/service/
+// status/expiry/connection) drive the already-existing dedicated filter
+// fields on `filters` directly -- this dropdown just controls which single
+// control is visible, replacing the old separate "Adv." panel.
+type FilterField =
+  | 'name' | 'id' | 'owner' | 'username' | 'phone' | 'nationalId' | 'notes'
+  | 'collector' | 'company' | 'service' | 'status' | 'expiry' | 'connection'
+
+const FILTER_FIELDS: { value: FilterField; label: string }[] = [
   { value: 'name', label: 'Name' },
   { value: 'id', label: 'ID' },
   { value: 'owner', label: 'Owner' },
   { value: 'username', label: 'Username' },
+  { value: 'phone', label: 'Phone' },
+  { value: 'nationalId', label: 'National ID' },
+  { value: 'notes', label: 'Notes' },
+  { value: 'collector', label: 'Collector' },
+  { value: 'company', label: 'Company' },
+  { value: 'service', label: 'Service' },
+  { value: 'status', label: 'Connection status' },
+  { value: 'expiry', label: 'Expiry date' },
+  { value: 'connection', label: 'Connection date' },
 ]
+
+const TEXT_FILTER_FIELDS: FilterField[] = ['name', 'id', 'owner', 'username', 'phone', 'nationalId', 'notes']
 
 export function SubscribersListPage() {
   const navigate = useNavigate()
   const { staff } = useStaff()
   const [filters, setFilters] = useState(emptyFilters)
-  const [filtersOpen, setFiltersOpen] = useState(false)
-  const [searchField, setSearchField] = useState<SubscriberSearchField>('name')
+  const [filterField, setFilterField] = useState<FilterField>('name')
   const [searchFieldMenuOpen, setSearchFieldMenuOpen] = useState(false)
   const [openCardMenuId, setOpenCardMenuId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -145,20 +165,26 @@ export function SubscribersListPage() {
         : null
 
     const ownerIdsForSearch =
-      searchField === 'owner' && filters.search.trim()
+      filterField === 'owner' && filters.search.trim()
         ? owners
             .filter((o) => o.name.toLowerCase().includes(filters.search.trim().toLowerCase()))
             .map((o) => o.id)
         : null
 
+    // Only the free-text modes drive the API's search/searchField mechanism;
+    // the rest already apply via their own dedicated filter fields, so any
+    // placeholder value here is inert as long as filters.search is blank.
+    const apiSearchField: SubscriberSearchField =
+      filterField === 'id' || filterField === 'owner' || filterField === 'username' ? filterField : 'name'
+
     const timer = setTimeout(() => {
-      listSubscribers(filters, serviceIdsForCompany, searchField, ownerIdsForSearch)
+      listSubscribers(filters, serviceIdsForCompany, apiSearchField, ownerIdsForSearch)
         .then((rows) => {
           if (cancelled) return
           let result = rows
           if (filters.debtMode === 'in_debt') result = result.filter((r) => debtIds.has(r.id))
           if (filters.debtMode === 'paid_up') result = result.filter((r) => !debtIds.has(r.id))
-          if (searchField === 'id' && filters.search.trim()) {
+          if (filterField === 'id' && filters.search.trim()) {
             const term = filters.search.trim().toLowerCase()
             result = result.filter((r) => r.id.toLowerCase().includes(term))
           }
@@ -177,10 +203,19 @@ export function SubscribersListPage() {
       clearTimeout(timer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters, services, debtIds, searchField, owners])
+  }, [filters, services, debtIds, filterField, owners])
 
   function updateFilter<K extends keyof typeof filters>(key: K, value: (typeof filters)[K]) {
     setFilters((f) => ({ ...f, [key]: value }))
+  }
+
+  // Switching which attribute to filter by clears the other filter fields
+  // (but not debtMode, which the separate All/Debt chips control) so only
+  // one filter control is ever showing a stale, invisible value.
+  function selectFilterField(field: FilterField) {
+    setFilterField(field)
+    setSearchFieldMenuOpen(false)
+    setFilters((f) => ({ ...emptyFilters, debtMode: f.debtMode }))
   }
 
   const activeFilterCount = Object.entries(filters).filter(([key, value]) => {
@@ -317,40 +352,151 @@ export function SubscribersListPage() {
       </div>
 
       <div className="relative mb-3">
-        <div className="flex items-center overflow-hidden rounded-full bg-white shadow-sm dark:bg-neutral-800">
-          <div className="shrink-0 border-r border-neutral-100 dark:border-neutral-700">
-            <button
-              onClick={() => setSearchFieldMenuOpen((v) => !v)}
-              className="relative z-20 flex items-center gap-1 px-3 py-2.5 text-sm font-medium text-neutral-700 dark:text-neutral-200"
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setSearchFieldMenuOpen((v) => !v)}
+            className="flex shrink-0 items-center gap-1 rounded-full bg-white px-3 py-2.5 text-sm font-medium text-neutral-700 shadow-sm dark:bg-neutral-800 dark:text-neutral-200"
+          >
+            {FILTER_FIELDS.find((f) => f.value === filterField)?.label}
+            <ChevronDown size={14} className="text-neutral-400" />
+          </button>
+
+          {TEXT_FILTER_FIELDS.includes(filterField) && (
+            <div className="flex flex-1 items-center rounded-full bg-white px-3 shadow-sm dark:bg-neutral-800">
+              <Search size={16} className="mr-2 shrink-0 text-neutral-400" />
+              <input
+                value={
+                  filterField === 'phone'
+                    ? filters.phone
+                    : filterField === 'nationalId'
+                      ? filters.nationalId
+                      : filterField === 'notes'
+                        ? filters.notes
+                        : filters.search
+                }
+                onChange={(e) => {
+                  const value = e.target.value
+                  if (filterField === 'phone') updateFilter('phone', value)
+                  else if (filterField === 'nationalId') updateFilter('nationalId', value)
+                  else if (filterField === 'notes') updateFilter('notes', value)
+                  else updateFilter('search', value)
+                }}
+                placeholder={`Search by ${FILTER_FIELDS.find((f) => f.value === filterField)?.label.toLowerCase()}…`}
+                className="min-w-0 flex-1 bg-transparent py-2.5 text-sm text-neutral-900 outline-none dark:text-neutral-100"
+              />
+            </div>
+          )}
+
+          {filterField === 'collector' && (
+            <select
+              value={filters.collectorId}
+              onChange={(e) => updateFilter('collectorId', e.target.value)}
+              className="flex-1 rounded-full bg-white px-3 py-2.5 text-sm text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100"
             >
-              {SEARCH_FIELDS.find((f) => f.value === searchField)?.label}
-              <ChevronDown size={14} className="text-neutral-400" />
-            </button>
-          </div>
-          <div className="flex flex-1 items-center px-3">
-            <Search size={16} className="mr-2 shrink-0 text-neutral-400" />
-            <input
-              value={filters.search}
-              onChange={(e) => updateFilter('search', e.target.value)}
-              placeholder={`Search by ${SEARCH_FIELDS.find((f) => f.value === searchField)?.label.toLowerCase()}…`}
-              className="min-w-0 flex-1 bg-transparent py-2.5 text-sm text-neutral-900 outline-none dark:text-neutral-100"
-            />
-          </div>
+              <option value="">Any collector</option>
+              {collectors.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {filterField === 'company' && (
+            <select
+              value={filters.companyId}
+              onChange={(e) => {
+                updateFilter('companyId', e.target.value)
+                updateFilter('serviceId', '')
+              }}
+              className="flex-1 rounded-full bg-white px-3 py-2.5 text-sm text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100"
+            >
+              <option value="">Any company</option>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {filterField === 'service' && (
+            <select
+              value={filters.serviceId}
+              onChange={(e) => updateFilter('serviceId', e.target.value)}
+              className="flex-1 rounded-full bg-white px-3 py-2.5 text-sm text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100"
+            >
+              <option value="">Any service</option>
+              {filteredServices.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {filterField === 'status' && (
+            <select
+              value={filters.status}
+              onChange={(e) => updateFilter('status', e.target.value as typeof filters.status)}
+              className="flex-1 rounded-full bg-white px-3 py-2.5 text-sm text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100"
+            >
+              <option value="">Any status</option>
+              <option value="active">Active</option>
+              <option value="suspended">Suspended</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          )}
+
+          {filterField === 'expiry' && (
+            <div className="flex flex-1 gap-2">
+              <input
+                type="date"
+                value={filters.expiryFrom}
+                onChange={(e) => updateFilter('expiryFrom', e.target.value)}
+                className="min-w-0 flex-1 rounded-full bg-white px-3 py-2 text-sm text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100"
+              />
+              <input
+                type="date"
+                value={filters.expiryTo}
+                onChange={(e) => updateFilter('expiryTo', e.target.value)}
+                className="min-w-0 flex-1 rounded-full bg-white px-3 py-2 text-sm text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100"
+              />
+            </div>
+          )}
+
+          {filterField === 'connection' && (
+            <div className="flex flex-1 gap-2">
+              <input
+                type="date"
+                value={filters.connectionFrom}
+                onChange={(e) => updateFilter('connectionFrom', e.target.value)}
+                className="min-w-0 flex-1 rounded-full bg-white px-3 py-2 text-sm text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100"
+              />
+              <input
+                type="date"
+                value={filters.connectionTo}
+                onChange={(e) => updateFilter('connectionTo', e.target.value)}
+                className="min-w-0 flex-1 rounded-full bg-white px-3 py-2 text-sm text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100"
+              />
+            </div>
+          )}
         </div>
-        {/* Rendered outside the pill's overflow-hidden container -- an
-            ancestor's overflow-hidden clips absolutely-positioned
-            descendants regardless of z-index, so nesting this inside the
-            pill above hid it entirely. */}
+
+        {/* Rendered outside any overflow-hidden container -- an ancestor's
+            overflow-hidden clips absolutely-positioned descendants
+            regardless of z-index. */}
         {searchFieldMenuOpen && (
-          <div className="absolute left-0 top-full z-20 mt-1 w-28 rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-800">
-            {SEARCH_FIELDS.map((f) => (
+          <div className="absolute left-0 top-full z-20 mt-1 max-h-72 w-40 overflow-y-auto rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-800">
+            {FILTER_FIELDS.map((f) => (
               <button
                 key={f.value}
-                onClick={() => {
-                  setSearchField(f.value)
-                  setSearchFieldMenuOpen(false)
-                }}
-                className="block w-full px-3 py-1.5 text-left text-sm text-neutral-700 hover:bg-neutral-50 dark:text-neutral-200 dark:hover:bg-neutral-700"
+                onClick={() => selectFilterField(f.value)}
+                className={`block w-full px-3 py-1.5 text-left text-sm hover:bg-neutral-50 dark:hover:bg-neutral-700 ${
+                  f.value === filterField
+                    ? 'font-semibold text-indigo-600'
+                    : 'text-neutral-700 dark:text-neutral-200'
+                }`}
               >
                 {f.label}
               </button>
@@ -381,17 +527,11 @@ export function SubscribersListPage() {
           <Filter size={14} />
           Debt
         </button>
-        <button
-          onClick={() => setFiltersOpen((v) => !v)}
-          className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium shadow-sm ${
-            filtersOpen
-              ? 'bg-indigo-500 text-white'
-              : 'bg-white text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200'
-          }`}
-        >
-          <Search size={14} />
-          Adv.{activeFilterCount > 0 && ` (${activeFilterCount})`}
-        </button>
+        {activeFilterCount > 0 && (
+          <button onClick={() => setFilters(emptyFilters)} className="shrink-0 text-xs font-medium text-neutral-500">
+            Clear filters
+          </button>
+        )}
         {subscribers.length > 0 && (
           <button
             onClick={() =>
@@ -408,177 +548,6 @@ export function SubscribersListPage() {
           {selectedIds.size > 0 ? `${selectedIds.size} selected` : `Total: ${subscribers.length}`}
         </div>
       </div>
-
-      {filtersOpen && (
-        <div className="mb-4 space-y-3 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-700 dark:bg-neutral-800">
-          <div>
-            <label className={labelClass}>Owner</label>
-            <select
-              value={filters.ownerId}
-              onChange={(e) => updateFilter('ownerId', e.target.value)}
-              className={inputClass}
-            >
-              <option value="">Any</option>
-              {owners.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className={labelClass}>Default collector</label>
-            <select
-              value={filters.collectorId}
-              onChange={(e) => updateFilter('collectorId', e.target.value)}
-              className={inputClass}
-            >
-              <option value="">Any</option>
-              {collectors.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className={labelClass}>Company</label>
-            <select
-              value={filters.companyId}
-              onChange={(e) => {
-                updateFilter('companyId', e.target.value)
-                updateFilter('serviceId', '')
-              }}
-              className={inputClass}
-            >
-              <option value="">Any</option>
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className={labelClass}>Service</label>
-            <select
-              value={filters.serviceId}
-              onChange={(e) => updateFilter('serviceId', e.target.value)}
-              className={inputClass}
-            >
-              <option value="">Any</option>
-              {filteredServices.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className={labelClass}>Connection status</label>
-            <select
-              value={filters.status}
-              onChange={(e) => updateFilter('status', e.target.value as typeof filters.status)}
-              className={inputClass}
-            >
-              <option value="">Any</option>
-              <option value="active">Active</option>
-              <option value="suspended">Suspended</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-          </div>
-
-          <div>
-            <label className={labelClass}>Debt status</label>
-            <select
-              value={filters.debtMode}
-              onChange={(e) => updateFilter('debtMode', e.target.value as typeof filters.debtMode)}
-              className={inputClass}
-            >
-              <option value="any">Any</option>
-              <option value="in_debt">In debt (unpaid/partial)</option>
-              <option value="paid_up">Paid up</option>
-            </select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelClass}>Expiry from</label>
-              <input
-                type="date"
-                value={filters.expiryFrom}
-                onChange={(e) => updateFilter('expiryFrom', e.target.value)}
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Expiry to</label>
-              <input
-                type="date"
-                value={filters.expiryTo}
-                onChange={(e) => updateFilter('expiryTo', e.target.value)}
-                className={inputClass}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelClass}>Connected from</label>
-              <input
-                type="date"
-                value={filters.connectionFrom}
-                onChange={(e) => updateFilter('connectionFrom', e.target.value)}
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Connected to</label>
-              <input
-                type="date"
-                value={filters.connectionTo}
-                onChange={(e) => updateFilter('connectionTo', e.target.value)}
-                className={inputClass}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className={labelClass}>Phone contains</label>
-            <input
-              value={filters.phone}
-              onChange={(e) => updateFilter('phone', e.target.value)}
-              className={inputClass}
-            />
-          </div>
-
-          <div>
-            <label className={labelClass}>National ID contains</label>
-            <input
-              value={filters.nationalId}
-              onChange={(e) => updateFilter('nationalId', e.target.value)}
-              className={inputClass}
-            />
-          </div>
-
-          <div>
-            <label className={labelClass}>Notes contain</label>
-            <input
-              value={filters.notes}
-              onChange={(e) => updateFilter('notes', e.target.value)}
-              className={inputClass}
-            />
-          </div>
-
-          <button onClick={() => setFilters(emptyFilters)} className={secondaryButtonClass}>
-            Clear filters
-          </button>
-        </div>
-      )}
 
       {error && <p className="mb-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
       {loading && <p className="text-neutral-500 dark:text-neutral-400">Loading…</p>}
