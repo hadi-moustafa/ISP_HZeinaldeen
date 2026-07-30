@@ -9,10 +9,16 @@ import {
 import { listOwners } from '../../lib/api/owners'
 import { listCollectors } from '../../lib/api/collectors'
 import { listServices } from '../../lib/api/services'
+import { createInvoice } from '../../lib/api/invoices'
 import { logActivity } from '../../lib/api/activityLog'
 import { useStaff } from '../../context/StaffContext'
 import type { Owner, Collector, ServiceWithCompany } from '../../types/reference'
 import { inputClass, labelClass, primaryButtonClass, secondaryButtonClass } from '../../lib/uiClasses'
+
+function currentPeriodMonth() {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+}
 
 const emptyForm: SubscriberInput = {
   name: '',
@@ -107,6 +113,22 @@ export function SubscriberFormPage() {
       } else {
         const created = await createSubscriber(input)
         logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} created subscriber ${input.name}`, 'subscriber', created.id)
+
+        // Bill them for the current period immediately -- otherwise they'd
+        // have no invoice (and no working Pay button) until the next
+        // monthly cron run.
+        if (input.connection_status === 'active' && input.service_id) {
+          const service = services.find((s) => s.id === input.service_id)
+          if (service) {
+            await createInvoice({
+              subscriber_id: created.id,
+              service_id: input.service_id,
+              period_month: currentPeriodMonth(),
+              amount_due: service.sell_price,
+            })
+          }
+        }
+
         navigate(`/subscribers/${created.id}`)
       }
     } catch (err) {

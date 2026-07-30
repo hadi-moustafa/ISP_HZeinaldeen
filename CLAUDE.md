@@ -56,7 +56,7 @@ npm run preview
 
 ## Confirmed product decisions (asked mid-build, now settled)
 
-- **Invoicing is automatic**, monthly, via the Edge Function + cron — not manually triggered per subscriber.
+- **Invoicing is automatic**, monthly, via the Edge Function + cron — not manually triggered per subscriber. **Exception**: creating a new active subscriber with a service also bills them for the current period immediately (`createInvoice()` in `lib/api/invoices.ts`, called from `SubscriberFormPage.tsx`'s create path only, not edit). Otherwise a subscriber created today has no invoice — and therefore no working Pay button — until the next cron run. Safe to double-generate: `invoices` has `UNIQUE(subscriber_id, period_month)`, so the cron's own insert for the same subscriber+period just hits `23505` and is skipped, same as any other re-run.
 - **Suspended and cancelled subscribers stop generating invoices.**
 - **Postponing an invoice touches the subscriber's `expiry_date`** — `postpone_invoice()` RPC does an atomic 3-way update: invoice row + `subscribers.expiry_date` + a postponements audit row.
 - **Receipt delivery is a `wa.me` deep link, not the Meta WhatsApp Cloud API.** Flow: collector taps a link on an invoice → `wa.me/<subscriber phone>?text=<receipt link>` opens WhatsApp pre-filled → collector hits send. Zero infrastructure, no access tokens/templates. Implemented in `src/components/subscriber/InvoicesSection.tsx` (`shareViaWhatsApp`). This replaced an earlier plan to use the Cloud API — don't reintroduce that unless explicitly asked again.

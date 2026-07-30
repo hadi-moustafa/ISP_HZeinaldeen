@@ -100,6 +100,22 @@ export async function doubleNextMonthInvoice(
   }
 }
 
+// Bills a newly-created active subscriber for the current period immediately,
+// rather than leaving them with no invoice (and therefore no working Pay
+// button) until the next monthly cron run. Safe to double-generate later:
+// invoices has UNIQUE(subscriber_id, period_month), so the cron's own
+// insert attempt for this same subscriber+period just hits 23505 and is
+// skipped, exactly like a manual re-run of the cron already is.
+export async function createInvoice(input: {
+  subscriber_id: string
+  service_id: string
+  period_month: string
+  amount_due: number
+}) {
+  const { error } = await supabase.from('invoices').insert({ ...input, due_date: input.period_month })
+  if (error && error.code !== '23505') throw error
+}
+
 export async function generateMonthlyInvoices() {
   const { data, error } = await supabase.functions.invoke('generate-monthly-invoices')
   if (error) throw error
