@@ -59,6 +59,47 @@ export async function postponeInvoice(
   if (error) throw error
 }
 
+// "Mark as debt" flow: doubles what the subscriber owes for next month as a
+// late-payment penalty, per explicit client instruction. Never touches the
+// current invoice (already unpaid/red on its own) -- only next period's.
+// If next month's invoice already exists (e.g. from the monthly cron) and
+// isn't paid yet, its amount is raised to double; if it doesn't exist yet,
+// it's created early. Once that doubled invoice is paid, the month after
+// reverts to the normal price automatically -- nothing here changes the
+// service's price, just this one invoice row.
+export async function doubleNextMonthInvoice(
+  subscriberId: string,
+  serviceId: string,
+  nextPeriodMonth: string,
+  doubledAmount: number,
+) {
+  const { data: existing, error: findError } = await supabase
+    .from('invoices')
+    .select('id, status')
+    .eq('subscriber_id', subscriberId)
+    .eq('period_month', nextPeriodMonth)
+    .maybeSingle()
+  if (findError) throw findError
+
+  if (existing) {
+    if (existing.status === 'paid') return
+    const { error } = await supabase
+      .from('invoices')
+      .update({ amount_due: doubledAmount })
+      .eq('id', existing.id)
+    if (error) throw error
+  } else {
+    const { error } = await supabase.from('invoices').insert({
+      subscriber_id: subscriberId,
+      service_id: serviceId,
+      period_month: nextPeriodMonth,
+      amount_due: doubledAmount,
+      status: 'unpaid',
+    })
+    if (error) throw error
+  }
+}
+
 export async function generateMonthlyInvoices() {
   const { data, error } = await supabase.functions.invoke('generate-monthly-invoices')
   if (error) throw error

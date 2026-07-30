@@ -47,8 +47,16 @@ export function SubscriberFormPage() {
         setOwners(o)
         setCollectors(c)
         setServices(s)
+        // New subscribers default to collector "hussien" -- client-specified
+        // default. Only applies on create; editing an existing subscriber
+        // never overwrites their already-set collector.
+        if (!isEdit) {
+          const hussien = c.find((col) => col.name.toLowerCase() === 'hussien')
+          if (hussien) setForm((f) => ({ ...f, default_collector_id: hussien.id }))
+        }
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load form data'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {

@@ -9,6 +9,7 @@ import type { Invoice, PaymentWithCollector } from '../../types/invoices'
 import type { Collector } from '../../types/reference'
 import { useStaff } from '../../context/StaffContext'
 import { logActivity } from '../../lib/api/activityLog'
+import { openWhatsApp } from '../../lib/whatsapp'
 import { Modal } from '../Modal'
 import {
   inputClass,
@@ -165,15 +166,11 @@ export function InvoicesSection({
   }
 
   function shareViaWhatsApp(invoice: Invoice) {
-    if (!subscriberPhone) {
-      setError('Subscriber has no phone number on file')
-      return
-    }
-    const digits = subscriberPhone.replace(/[^\d]/g, '')
     const receiptUrl = `${window.location.origin}/receipt/${invoice.id}`
     const message = `Hi ${subscriberName}, here's your receipt for ${invoice.period_month}: ${receiptUrl}`
-    const waUrl = `https://wa.me/${digits}?text=${encodeURIComponent(message)}`
-    window.open(waUrl, '_blank', 'noopener,noreferrer')
+    if (!openWhatsApp(subscriberPhone, message)) {
+      setError('Subscriber has no phone number on file')
+    }
   }
 
   return (

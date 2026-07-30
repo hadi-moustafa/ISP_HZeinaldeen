@@ -12,8 +12,9 @@ import { listCollectors } from '../../lib/api/collectors'
 import { listCompanies } from '../../lib/api/companies'
 import { listServices } from '../../lib/api/services'
 import { listMonthlyLog } from '../../lib/api/reports'
-import { createPayment } from '../../lib/api/invoices'
+import { createPayment, postponeInvoice, doubleNextMonthInvoice } from '../../lib/api/invoices'
 import { logActivity } from '../../lib/api/activityLog'
+import { openWhatsApp, paidMessage, postponedMessage, debtMessage } from '../../lib/whatsapp'
 import type { SubscriberWithRelations } from '../../types/subscribers'
 import { emptyFilters } from '../../types/subscribers'
 import type { MonthlyLogRow } from '../../types/reports'
@@ -66,6 +67,13 @@ function currentPeriodMonth() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
 }
 
+function nextPeriodMonth(period: string) {
+  const [y, m] = period.split('-').map(Number)
+  const nextM = m === 12 ? 1 : m + 1
+  const nextY = m === 12 ? y + 1 : y
+  return `${nextY}-${String(nextM).padStart(2, '0')}-01`
+}
+
 function formatDateTime(iso: string) {
   const d = new Date(iso)
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -110,6 +118,7 @@ export function SubscribersListPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   const [paymentSub, setPaymentSub] = useState<SubscriberWithRelations | null>(null)
+  const [paymentMode, setPaymentMode] = useState<'paid' | 'postponed' | 'debt'>('paid')
   const [paymentForm, setPaymentForm] = useState({
     amount: '',
     payment_date: new Date().toISOString().slice(0, 10),
@@ -117,6 +126,7 @@ export function SubscribersListPage() {
     collector_id: '',
     note: '',
   })
+  const [postponeForm, setPostponeForm] = useState({ new_due_date: '', reason: '' })
   const [paymentError, setPaymentError] = useState<string | null>(null)
   const [paymentSaving, setPaymentSaving] = useState(false)
 
@@ -259,6 +269,7 @@ export function SubscribersListPage() {
     const log = monthlyLogBySubscriber[sub.id]
     const remaining = log ? Math.max(log.amount_due - log.amount_paid, 0) : 0
     setPaymentError(null)
+    setPaymentMode('paid')
     setPaymentForm({
       amount: remaining ? String(remaining) : '',
       payment_date: new Date().toISOString().slice(0, 10),
@@ -266,7 +277,17 @@ export function SubscribersListPage() {
       collector_id: sub.default_collector_id ?? '',
       note: '',
     })
+    setPostponeForm({ new_due_date: sub.expiry_date ?? '', reason: '' })
     setPaymentSub(sub)
+  }
+
+  // Debt amount is anchored to the subscriber's normal monthly rate
+  // (services.sell_price), not the current invoice's amount_due, so it
+  // stays correct even if this month's invoice was itself already adjusted.
+  function debtDoubleAmount(sub: SubscriberWithRelations) {
+    const log = monthlyLogBySubscriber[sub.id]
+    const base = sub.services?.sell_price ?? log?.amount_due ?? 0
+    return base * 2
   }
 
   async function submitPayment(e: FormEvent) {
@@ -276,26 +297,55 @@ export function SubscribersListPage() {
     setPaymentSaving(true)
     setPaymentError(null)
     try {
-      await createPayment({
-        invoice_id: log?.invoice_id ?? null,
-        subscriber_id: paymentSub.id,
-        collector_id: paymentForm.collector_id || null,
-        amount: Number(paymentForm.amount),
-        payment_date: paymentForm.payment_date,
-        method: paymentForm.method,
-        note: paymentForm.note || null,
-        staff_id: staff?.id ?? null,
-      })
-      logActivity(
-        staff?.id ?? null,
-        `${staff?.username ?? 'Someone'} logged a payment of ${paymentForm.amount} for subscriber ${paymentSub.name}`,
-        'payment',
-        paymentSub.id,
-      )
+      if (paymentMode === 'paid') {
+        await createPayment({
+          invoice_id: log?.invoice_id ?? null,
+          subscriber_id: paymentSub.id,
+          collector_id: paymentForm.collector_id || null,
+          amount: Number(paymentForm.amount),
+          payment_date: paymentForm.payment_date,
+          method: paymentForm.method,
+          note: paymentForm.note || null,
+          staff_id: staff?.id ?? null,
+        })
+        logActivity(
+          staff?.id ?? null,
+          `${staff?.username ?? 'Someone'} logged a payment of ${paymentForm.amount} for subscriber ${paymentSub.name}`,
+          'payment',
+          paymentSub.id,
+        )
+        openWhatsApp(paymentSub.phone, paidMessage(paymentSub.name))
+      } else if (paymentMode === 'postponed') {
+        if (!log?.invoice_id) throw new Error('No invoice this period to postpone')
+        await postponeInvoice(log.invoice_id, postponeForm.new_due_date, postponeForm.reason || null, staff?.id ?? null)
+        logActivity(
+          staff?.id ?? null,
+          `${staff?.username ?? 'Someone'} postponed the invoice for subscriber ${paymentSub.name} to ${postponeForm.new_due_date}`,
+          'invoice',
+          log.invoice_id,
+        )
+        openWhatsApp(paymentSub.phone, postponedMessage(paymentSub.name, postponeForm.new_due_date))
+      } else {
+        if (!paymentSub.service_id) throw new Error('Subscriber has no service to base the debt amount on')
+        const doubled = debtDoubleAmount(paymentSub)
+        await doubleNextMonthInvoice(
+          paymentSub.id,
+          paymentSub.service_id,
+          nextPeriodMonth(currentPeriodMonth()),
+          doubled,
+        )
+        logActivity(
+          staff?.id ?? null,
+          `${staff?.username ?? 'Someone'} marked subscriber ${paymentSub.name} as in debt -- next month's payment doubled to ${doubled}`,
+          'subscriber',
+          paymentSub.id,
+        )
+        openWhatsApp(paymentSub.phone, debtMessage(paymentSub.name, doubled))
+      }
       setPaymentSub(null)
       await refreshBillingData()
     } catch (err) {
-      setPaymentError(err instanceof Error ? err.message : 'Failed to log payment')
+      setPaymentError(err instanceof Error ? err.message : 'Failed to update subscriber')
     } finally {
       setPaymentSaving(false)
     }
@@ -682,61 +732,126 @@ export function SubscribersListPage() {
       <Modal
         open={Boolean(paymentSub)}
         onClose={() => setPaymentSub(null)}
-        title={`Log payment · ${paymentSub?.name ?? ''}`}
+        title={`Update status · ${paymentSub?.name ?? ''}`}
       >
         <form onSubmit={submitPayment}>
           {paymentError && <p className="mb-3 text-sm text-red-600">{paymentError}</p>}
-          <label className={labelClass}>Amount</label>
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            value={paymentForm.amount}
-            onChange={(e) => setPaymentForm((f) => ({ ...f, amount: e.target.value }))}
-            className={`${inputClass} mb-4`}
-            required
-          />
-          <label className={labelClass}>Payment date</label>
-          <input
-            type="date"
-            value={paymentForm.payment_date}
-            onChange={(e) => setPaymentForm((f) => ({ ...f, payment_date: e.target.value }))}
-            className={`${inputClass} mb-4`}
-            required
-          />
-          <label className={labelClass}>Method</label>
-          <input
-            value={paymentForm.method}
-            onChange={(e) => setPaymentForm((f) => ({ ...f, method: e.target.value }))}
-            className={`${inputClass} mb-4`}
-          />
-          <label className={labelClass}>
-            Collector (who actually collected this — may differ from default)
-          </label>
-          <select
-            value={paymentForm.collector_id}
-            onChange={(e) => setPaymentForm((f) => ({ ...f, collector_id: e.target.value }))}
-            className={`${inputClass} mb-4`}
-          >
-            <option value="">None</option>
-            {collectors.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
+
+          <div className="mb-4 flex gap-1 rounded-full bg-neutral-100 p-1">
+            {(
+              [
+                { value: 'paid', label: 'Paid', active: 'bg-green-500 text-white' },
+                { value: 'postponed', label: 'Postponed', active: 'bg-orange-500 text-white' },
+                { value: 'debt', label: 'Debt', active: 'bg-red-500 text-white' },
+              ] as const
+            ).map((m) => (
+              <button
+                key={m.value}
+                type="button"
+                onClick={() => setPaymentMode(m.value)}
+                className={`flex-1 rounded-full py-1.5 text-sm font-medium ${
+                  paymentMode === m.value ? m.active : 'text-neutral-600'
+                }`}
+              >
+                {m.label}
+              </button>
             ))}
-          </select>
-          <label className={labelClass}>Note</label>
-          <input
-            value={paymentForm.note}
-            onChange={(e) => setPaymentForm((f) => ({ ...f, note: e.target.value }))}
-            className={`${inputClass} mb-4`}
-          />
+          </div>
+
+          {paymentMode === 'paid' && (
+            <>
+              <p className="mb-4 text-xs text-neutral-500">
+                Logs the payment, turns this subscriber green, pushes their expiry a month forward,
+                and opens WhatsApp with an Arabic confirmation to send them.
+              </p>
+              <label className={labelClass}>Amount</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={paymentForm.amount}
+                onChange={(e) => setPaymentForm((f) => ({ ...f, amount: e.target.value }))}
+                className={`${inputClass} mb-4`}
+                required
+              />
+              <label className={labelClass}>Payment date</label>
+              <input
+                type="date"
+                value={paymentForm.payment_date}
+                onChange={(e) => setPaymentForm((f) => ({ ...f, payment_date: e.target.value }))}
+                className={`${inputClass} mb-4`}
+                required
+              />
+              <label className={labelClass}>Method</label>
+              <input
+                value={paymentForm.method}
+                onChange={(e) => setPaymentForm((f) => ({ ...f, method: e.target.value }))}
+                className={`${inputClass} mb-4`}
+              />
+              <label className={labelClass}>
+                Collector (who actually collected this — may differ from default)
+              </label>
+              <select
+                value={paymentForm.collector_id}
+                onChange={(e) => setPaymentForm((f) => ({ ...f, collector_id: e.target.value }))}
+                className={`${inputClass} mb-4`}
+              >
+                <option value="">None</option>
+                {collectors.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <label className={labelClass}>Note</label>
+              <input
+                value={paymentForm.note}
+                onChange={(e) => setPaymentForm((f) => ({ ...f, note: e.target.value }))}
+                className={`${inputClass} mb-4`}
+              />
+            </>
+          )}
+
+          {paymentMode === 'postponed' && (
+            <>
+              <p className="mb-4 text-xs text-neutral-500">
+                Moves this subscriber's expiry to the new date, turns them orange, and opens
+                WhatsApp with an Arabic message telling them the new due date.
+              </p>
+              <label className={labelClass}>New due date</label>
+              <input
+                type="date"
+                value={postponeForm.new_due_date}
+                onChange={(e) => setPostponeForm((f) => ({ ...f, new_due_date: e.target.value }))}
+                className={`${inputClass} mb-4`}
+                required
+              />
+              <label className={labelClass}>Reason</label>
+              <input
+                value={postponeForm.reason}
+                onChange={(e) => setPostponeForm((f) => ({ ...f, reason: e.target.value }))}
+                className={`${inputClass} mb-4`}
+              />
+            </>
+          )}
+
+          {paymentMode === 'debt' && (
+            <>
+              <p className="mb-4 text-xs text-neutral-500">
+                Turns this subscriber red and sets next month's payment to double
+                {paymentSub ? ` (${debtDoubleAmount(paymentSub)})` : ''} as a late-payment penalty.
+                It reverts to the normal amount automatically once that doubled invoice is paid.
+                Opens WhatsApp with an Arabic message telling them they're in debt.
+              </p>
+            </>
+          )}
+
           <div className="flex justify-end gap-2">
             <button type="button" onClick={() => setPaymentSub(null)} className={secondaryButtonClass}>
               Cancel
             </button>
             <button type="submit" disabled={paymentSaving} className={primaryButtonClass}>
-              {paymentSaving ? 'Saving…' : 'Save'}
+              {paymentSaving ? 'Saving…' : 'Save & Notify'}
             </button>
           </div>
         </form>
