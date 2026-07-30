@@ -6,6 +6,8 @@ import {
   deleteCollector,
 } from '../../lib/api/collectors'
 import type { Collector } from '../../types/reference'
+import { logActivity } from '../../lib/api/activityLog'
+import { useStaff } from '../../context/StaffContext'
 import { Modal } from '../../components/Modal'
 import {
   inputClass,
@@ -19,6 +21,7 @@ import {
 const emptyForm = { name: '', phone: '', is_active: true }
 
 export function CollectorsPage() {
+  const { staff } = useStaff()
   const [collectors, setCollectors] = useState<Collector[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -65,8 +68,10 @@ export function CollectorsPage() {
     try {
       if (editing) {
         await updateCollector(editing.id, input)
+        logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} edited collector ${input.name}`, 'collector', editing.id)
       } else {
-        await createCollector(input)
+        const created = await createCollector(input)
+        logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} created collector ${input.name}`, 'collector', created.id)
       }
       setModalOpen(false)
       await refresh()
@@ -79,6 +84,7 @@ export function CollectorsPage() {
     if (!confirm(`Delete collector "${collector.name}"?`)) return
     try {
       await deleteCollector(collector.id)
+      logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} deleted collector ${collector.name}`, 'collector', collector.id)
       await refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete collector')

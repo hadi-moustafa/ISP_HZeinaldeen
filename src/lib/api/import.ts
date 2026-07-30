@@ -5,6 +5,26 @@ import type { Company, Collector, ServiceWithCompany } from '../../types/referen
 
 // --- Step 1: parse the uploaded file -------------------------------------
 
+// The canonical column names this importer understands. sheet_to_json
+// already keys each row by header text rather than column position, so a
+// reordered export already works -- this list exists to tolerate the other
+// way real exports drift: incidental header differences (extra whitespace,
+// different casing, e.g. "user name" vs "Username") without silently
+// dropping that column's data.
+const CANONICAL_HEADERS: (keyof RawImportRow)[] = [
+  'Username', 'Name', 'Password', 'Address', 'Mobile', 'Note', 'Reseller',
+  'Expiry', 'Service', 'Blocked', 'Switch', 'Date Created', 'Price',
+  'Balance', 'Region', 'Building', 'Nationality', 'Mac Address', 'Collector',
+]
+
+function normalizeHeaderKey(header: string) {
+  return header.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+const CANONICAL_BY_NORMALIZED_KEY = new Map(
+  CANONICAL_HEADERS.map((h) => [normalizeHeaderKey(h), h]),
+)
+
 export async function parseWorkbookFile(file: File): Promise<RawImportRow[]> {
   const buffer = await file.arrayBuffer()
   const workbook = XLSX.read(buffer, { type: 'array', cellDates: true })
@@ -12,7 +32,24 @@ export async function parseWorkbookFile(file: File): Promise<RawImportRow[]> {
   // defval keeps every declared column present (as '') even when a cell is
   // blank, so downstream code never has to guess between "missing key" and
   // "blank value".
-  return XLSX.utils.sheet_to_json<RawImportRow>(sheet, { defval: '', raw: false, dateNF: 'yyyy-mm-dd' })
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+    defval: '',
+    raw: false,
+    dateNF: 'yyyy-mm-dd',
+  })
+
+  // Remap each row's keys to the canonical header names so a real-world
+  // export with slightly different header casing/spacing (but the same
+  // underlying columns) still lands on the right field, instead of the
+  // column silently reading as blank because the exact key didn't match.
+  return rows.map((row) => {
+    const normalized: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(row)) {
+      const canonical = CANONICAL_BY_NORMALIZED_KEY.get(normalizeHeaderKey(key)) ?? key
+      normalized[canonical] = value
+    }
+    return normalized as unknown as RawImportRow
+  })
 }
 
 // Formats using local getters, not toISOString(): these are date-only values

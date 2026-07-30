@@ -13,6 +13,8 @@ import { CollectorsPage } from './pages/admin/CollectorsPage'
 import { OwnersPage } from './pages/admin/OwnersPage'
 import { ProductsPage } from './pages/admin/ProductsPage'
 import { ImportPage } from './pages/admin/ImportPage'
+import { CompanyPaymentsPage } from './pages/admin/CompanyPaymentsPage'
+import { ActivityLogPage } from './pages/admin/ActivityLogPage'
 import { SubscribersListPage } from './pages/subscribers/SubscribersListPage'
 import { SubscriberFormPage } from './pages/subscribers/SubscriberFormPage'
 import { SubscriberDetailPage } from './pages/subscribers/SubscriberDetailPage'
@@ -49,6 +51,8 @@ function App() {
             <Route path="owners" element={<OwnersPage />} />
             <Route path="products" element={<ProductsPage />} />
             <Route path="import" element={<ImportPage />} />
+            <Route path="company-payments" element={<CompanyPaymentsPage />} />
+            <Route path="activity-log" element={<ActivityLogPage />} />
           </Route>
           <Route
             path="/subscribers"

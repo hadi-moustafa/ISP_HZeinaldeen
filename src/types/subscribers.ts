@@ -51,6 +51,11 @@ export interface SubscriberFilters {
   debtMode: DebtFilterMode
   expiryFrom: string
   expiryTo: string
+  phone: string
+  nationalId: string
+  notes: string
+  connectionFrom: string
+  connectionTo: string
 }
 
 export const emptyFilters: SubscriberFilters = {
@@ -63,4 +68,9 @@ export const emptyFilters: SubscriberFilters = {
   debtMode: 'any',
   expiryFrom: '',
   expiryTo: '',
+  phone: '',
+  nationalId: '',
+  notes: '',
+  connectionFrom: '',
+  connectionTo: '',
 }

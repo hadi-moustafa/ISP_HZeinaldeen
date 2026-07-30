@@ -1,4 +1,5 @@
 export type MovementType = 'restock' | 'sale' | 'adjustment' | 'return'
+export type MovementPaymentStatus = 'paid' | 'unpaid' | 'partial'
 
 export interface ProductMovement {
   id: string
@@ -10,6 +11,7 @@ export interface ProductMovement {
   staff_id: string | null
   note: string | null
   movement_date: string
+  payment_status: MovementPaymentStatus
   created_at: string
 }
 

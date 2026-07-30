@@ -11,6 +11,7 @@ import {
   postponeInvoiceOffline,
 } from '../lib/offline/sync'
 import { Modal } from '../components/Modal'
+import { logActivity } from '../lib/api/activityLog'
 import {
   inputClass,
   labelClass,
@@ -125,6 +126,14 @@ export function OfflinePage() {
         },
         online,
       )
+      if (online) {
+        logActivity(
+          staff?.id ?? null,
+          `${staff?.username ?? 'Someone'} logged a payment of ${paymentForm.amount} for subscriber ${paymentSub.name} (field)`,
+          'payment',
+          paymentSub.id,
+        )
+      }
       setPaymentSub(null)
       await loadFromCache()
     } catch (err) {
@@ -150,6 +159,14 @@ export function OfflinePage() {
         },
         online,
       )
+      if (online) {
+        logActivity(
+          staff?.id ?? null,
+          `${staff?.username ?? 'Someone'} postponed an invoice to ${postponeForm.new_due_date} (field)`,
+          'invoice',
+          postponeInvoice.id,
+        )
+      }
       setPostponeInvoice(null)
       await loadFromCache()
     } catch (err) {

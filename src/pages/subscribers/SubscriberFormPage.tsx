@@ -9,6 +9,8 @@ import {
 import { listOwners } from '../../lib/api/owners'
 import { listCollectors } from '../../lib/api/collectors'
 import { listServices } from '../../lib/api/services'
+import { logActivity } from '../../lib/api/activityLog'
+import { useStaff } from '../../context/StaffContext'
 import type { Owner, Collector, ServiceWithCompany } from '../../types/reference'
 import { inputClass, labelClass, primaryButtonClass, secondaryButtonClass } from '../../lib/uiClasses'
 
@@ -29,6 +31,7 @@ export function SubscriberFormPage() {
   const { id } = useParams()
   const isEdit = Boolean(id)
   const navigate = useNavigate()
+  const { staff } = useStaff()
 
   const [owners, setOwners] = useState<Owner[]>([])
   const [collectors, setCollectors] = useState<Collector[]>([])
@@ -91,9 +94,11 @@ export function SubscriberFormPage() {
     try {
       if (isEdit && id) {
         await updateSubscriber(id, input)
+        logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} edited subscriber ${input.name}`, 'subscriber', id)
         navigate(`/subscribers/${id}`)
       } else {
         const created = await createSubscriber(input)
+        logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} created subscriber ${input.name}`, 'subscriber', created.id)
         navigate(`/subscribers/${created.id}`)
       }
     } catch (err) {

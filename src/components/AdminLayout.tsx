@@ -8,6 +8,8 @@ const tabs = [
   { to: '/admin/owners', label: 'Owners' },
   { to: '/admin/products', label: 'Products' },
   { to: '/admin/import', label: 'Import' },
+  { to: '/admin/company-payments', label: 'Company Payments' },
+  { to: '/admin/activity-log', label: 'Activity Log' },
 ]
 
 export function AdminLayout() {

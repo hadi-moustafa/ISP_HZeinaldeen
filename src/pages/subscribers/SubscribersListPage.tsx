@@ -13,6 +13,7 @@ import { listCompanies } from '../../lib/api/companies'
 import { listServices } from '../../lib/api/services'
 import { listMonthlyLog } from '../../lib/api/reports'
 import { createPayment } from '../../lib/api/invoices'
+import { logActivity } from '../../lib/api/activityLog'
 import type { SubscriberWithRelations } from '../../types/subscribers'
 import { emptyFilters } from '../../types/subscribers'
 import type { MonthlyLogRow } from '../../types/reports'
@@ -25,30 +26,31 @@ import { exportToExcel } from '../../lib/exportExcel'
 
 type BillingKey = 'paid' | 'debt' | 'postponed' | 'none'
 
+// Literal client-specified scheme: green = paid, orange = postponed, red = debt.
 const BILLING_STYLES: Record<BillingKey, { border: string; pill: string; bar: string; amount: string }> = {
   paid: {
-    border: 'border-l-emerald-500',
-    pill: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300',
-    bar: 'bg-emerald-500',
-    amount: 'text-emerald-600 dark:text-emerald-400',
+    border: 'border-l-green-500',
+    pill: 'bg-green-100 text-green-700',
+    bar: 'bg-green-500',
+    amount: 'text-green-600',
   },
   debt: {
-    border: 'border-l-rose-500',
-    pill: 'bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-300',
-    bar: 'bg-rose-500',
-    amount: 'text-rose-600 dark:text-rose-400',
+    border: 'border-l-red-500',
+    pill: 'bg-red-100 text-red-700',
+    bar: 'bg-red-500',
+    amount: 'text-red-600',
   },
   postponed: {
-    border: 'border-l-amber-500',
-    pill: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300',
-    bar: 'bg-amber-500',
-    amount: 'text-amber-600 dark:text-amber-400',
+    border: 'border-l-orange-500',
+    pill: 'bg-orange-100 text-orange-700',
+    bar: 'bg-orange-500',
+    amount: 'text-orange-600',
   },
   none: {
-    border: 'border-l-neutral-300 dark:border-l-neutral-600',
-    pill: 'bg-neutral-100 text-neutral-500 dark:bg-neutral-700 dark:text-neutral-400',
-    bar: 'bg-neutral-300 dark:bg-neutral-600',
-    amount: 'text-neutral-500 dark:text-neutral-400',
+    border: 'border-l-neutral-300',
+    pill: 'bg-neutral-100 text-neutral-500',
+    bar: 'bg-neutral-300',
+    amount: 'text-neutral-500',
   },
 }
 
@@ -74,6 +76,7 @@ const SEARCH_FIELDS: { value: SubscriberSearchField; label: string }[] = [
   { value: 'name', label: 'Name' },
   { value: 'id', label: 'ID' },
   { value: 'owner', label: 'Owner' },
+  { value: 'username', label: 'Username' },
 ]
 
 export function SubscribersListPage() {
@@ -248,6 +251,12 @@ export function SubscribersListPage() {
         note: paymentForm.note || null,
         staff_id: staff?.id ?? null,
       })
+      logActivity(
+        staff?.id ?? null,
+        `${staff?.username ?? 'Someone'} logged a payment of ${paymentForm.amount} for subscriber ${paymentSub.name}`,
+        'payment',
+        paymentSub.id,
+      )
       setPaymentSub(null)
       await refreshBillingData()
     } catch (err) {
@@ -262,6 +271,7 @@ export function SubscribersListPage() {
     if (!confirm(`Delete subscriber "${sub.name}"? This also deletes their addresses.`)) return
     try {
       await deleteSubscriber(sub.id)
+      logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} deleted subscriber ${sub.name}`, 'subscriber', sub.id)
       setSubscribers((prev) => prev.filter((s) => s.id !== sub.id))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete subscriber')
@@ -382,7 +392,19 @@ export function SubscribersListPage() {
           <Search size={14} />
           Adv.{activeFilterCount > 0 && ` (${activeFilterCount})`}
         </button>
-        <div className="ml-auto shrink-0 rounded-full bg-rose-100 px-3 py-1.5 text-sm font-bold text-rose-700">
+        {subscribers.length > 0 && (
+          <button
+            onClick={() =>
+              setSelectedIds((prev) =>
+                prev.size === subscribers.length ? new Set() : new Set(subscribers.map((s) => s.id)),
+              )
+            }
+            className="shrink-0 text-xs font-medium text-indigo-600"
+          >
+            {selectedIds.size === subscribers.length ? 'Clear' : 'Select all'}
+          </button>
+        )}
+        <div className="ml-auto shrink-0 rounded-full bg-red-100 px-3 py-1.5 text-sm font-bold text-red-700">
           {selectedIds.size > 0 ? `${selectedIds.size} selected` : `Total: ${subscribers.length}`}
         </div>
       </div>
@@ -502,6 +524,54 @@ export function SubscribersListPage() {
                 className={inputClass}
               />
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelClass}>Connected from</label>
+              <input
+                type="date"
+                value={filters.connectionFrom}
+                onChange={(e) => updateFilter('connectionFrom', e.target.value)}
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Connected to</label>
+              <input
+                type="date"
+                value={filters.connectionTo}
+                onChange={(e) => updateFilter('connectionTo', e.target.value)}
+                className={inputClass}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className={labelClass}>Phone contains</label>
+            <input
+              value={filters.phone}
+              onChange={(e) => updateFilter('phone', e.target.value)}
+              className={inputClass}
+            />
+          </div>
+
+          <div>
+            <label className={labelClass}>National ID contains</label>
+            <input
+              value={filters.nationalId}
+              onChange={(e) => updateFilter('nationalId', e.target.value)}
+              className={inputClass}
+            />
+          </div>
+
+          <div>
+            <label className={labelClass}>Notes contain</label>
+            <input
+              value={filters.notes}
+              onChange={(e) => updateFilter('notes', e.target.value)}
+              className={inputClass}
+            />
           </div>
 
           <button onClick={() => setFilters(emptyFilters)} className={secondaryButtonClass}>

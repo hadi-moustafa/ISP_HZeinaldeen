@@ -8,6 +8,7 @@ import {
 import type { Invoice, PaymentWithCollector } from '../../types/invoices'
 import type { Collector } from '../../types/reference'
 import { useStaff } from '../../context/StaffContext'
+import { logActivity } from '../../lib/api/activityLog'
 import { Modal } from '../Modal'
 import {
   inputClass,
@@ -31,12 +32,14 @@ export function InvoicesSection({
   subscriberPhone,
   defaultCollectorId,
   collectors,
+  onChanged,
 }: {
   subscriberId: string
   subscriberName: string
   subscriberPhone: string | null
   defaultCollectorId: string | null
   collectors: Collector[]
+  onChanged?: () => void
 }) {
   const { staff } = useStaff()
   const [invoices, setInvoices] = useState<Invoice[]>([])
@@ -116,10 +119,17 @@ export function InvoicesSection({
         note: paymentForm.note || null,
         staff_id: staff?.id ?? null,
       })
+      logActivity(
+        staff?.id ?? null,
+        `${staff?.username ?? 'Someone'} logged a payment of ${paymentForm.amount} for subscriber ${subscriberName}`,
+        'payment',
+        paymentModalInvoice.id,
+      )
       setPaymentModalInvoice(null)
       await refresh()
       const rows = await listPaymentsForInvoice(paymentModalInvoice.id)
       setPayments((prev) => ({ ...prev, [paymentModalInvoice.id]: rows }))
+      onChanged?.()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to log payment')
     }
@@ -140,8 +150,15 @@ export function InvoicesSection({
         postponeForm.reason || null,
         staff?.id ?? null,
       )
+      logActivity(
+        staff?.id ?? null,
+        `${staff?.username ?? 'Someone'} postponed the invoice for subscriber ${subscriberName} to ${postponeForm.new_due_date}`,
+        'invoice',
+        postponeModalInvoice.id,
+      )
       setPostponeModalInvoice(null)
       await refresh()
+      onChanged?.()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to postpone invoice')
     }

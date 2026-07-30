@@ -1,9 +1,14 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { listProducts, createProduct, updateProduct, deleteProduct } from '../../lib/api/products'
-import { listMovementsForProduct, createMovement } from '../../lib/api/movements'
+import {
+  listMovementsForProduct,
+  createMovement,
+  updateMovementPaymentStatus,
+} from '../../lib/api/movements'
 import { listSubscribersLite } from '../../lib/api/subscribers'
+import { logActivity } from '../../lib/api/activityLog'
 import type { Product } from '../../types/reference'
-import type { MovementType, ProductMovementWithSubscriber } from '../../types/movements'
+import type { MovementPaymentStatus, MovementType, ProductMovementWithSubscriber } from '../../types/movements'
 import { useStaff } from '../../context/StaffContext'
 import { Modal } from '../../components/Modal'
 import { exportToExcel } from '../../lib/exportExcel'
@@ -41,6 +46,19 @@ const emptyMovementForm = {
   subscriber_id: '',
   note: '',
   movement_date: new Date().toISOString().slice(0, 10),
+  payment_status: 'unpaid' as MovementPaymentStatus,
+}
+
+const paymentStatusClass: Record<MovementPaymentStatus, string> = {
+  paid: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300',
+  partial: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300',
+  unpaid: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
+}
+
+const paymentStatusLabel: Record<MovementPaymentStatus, string> = {
+  paid: 'Paid',
+  partial: 'Partial',
+  unpaid: 'Unpaid',
 }
 
 export function ProductsPage() {
@@ -115,8 +133,10 @@ export function ProductsPage() {
     try {
       if (editing) {
         await updateProduct(editing.id, input)
+        logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} edited product ${input.name}`, 'product', editing.id)
       } else {
-        await createProduct(input)
+        const created = await createProduct(input)
+        logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} created product ${input.name}`, 'product', created.id)
       }
       setModalOpen(false)
       await refresh()
@@ -130,6 +150,7 @@ export function ProductsPage() {
       return
     try {
       await deleteProduct(product.id)
+      logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} deleted product ${product.name}`, 'product', product.id)
       await refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete product')
@@ -149,6 +170,18 @@ export function ProductsPage() {
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load movements')
       }
+    }
+  }
+
+  async function changePaymentStatus(productId: string, movement: ProductMovementWithSubscriber, status: MovementPaymentStatus) {
+    try {
+      await updateMovementPaymentStatus(movement.id, status)
+      setMovements((prev) => ({
+        ...prev,
+        [productId]: (prev[productId] ?? []).map((m) => (m.id === movement.id ? { ...m, payment_status: status } : m)),
+      }))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update payment status')
     }
   }
 
@@ -181,7 +214,14 @@ export function ProductsPage() {
         staff_id: staff?.id ?? null,
         note: movementForm.note || null,
         movement_date: movementForm.movement_date,
+        payment_status: movementForm.movement_type === 'sale' ? movementForm.payment_status : 'paid',
       })
+      logActivity(
+        staff?.id ?? null,
+        `${staff?.username ?? 'Someone'} logged a ${movementForm.movement_type} of ${Math.abs(signedQuantity)} for ${movementModalProduct.name}`,
+        'product_movement',
+        movementModalProduct.id,
+      )
       setMovementModalProduct(null)
       await refresh()
       const rows = await listMovementsForProduct(movementModalProduct.id)
@@ -282,13 +322,30 @@ export function ProductsPage() {
                 {(movements[product.id] ?? []).map((m) => (
                   <div
                     key={m.id}
-                    className="rounded-md bg-neutral-50 p-2 text-sm dark:bg-neutral-700/50"
+                    className={`rounded-md p-2 text-sm ${
+                      m.movement_type === 'sale' ? paymentStatusClass[m.payment_status] : 'bg-neutral-50 dark:bg-neutral-700/50'
+                    }`}
                   >
-                    <p className="text-neutral-800 dark:text-neutral-100">
-                      {m.movement_type} · {m.quantity > 0 ? '+' : ''}
-                      {m.quantity} on {m.movement_date}
-                    </p>
-                    <p className="text-neutral-500 dark:text-neutral-400">
+                    <div className="flex items-center justify-between gap-2">
+                      <p>
+                        {m.movement_type} · {m.quantity > 0 ? '+' : ''}
+                        {m.quantity} on {m.movement_date}
+                      </p>
+                      {m.movement_type === 'sale' && (
+                        <select
+                          value={m.payment_status}
+                          onChange={(e) => changePaymentStatus(product.id, m, e.target.value as MovementPaymentStatus)}
+                          className="shrink-0 rounded border-0 bg-white/60 text-xs font-medium dark:bg-black/20"
+                        >
+                          {(Object.keys(paymentStatusLabel) as MovementPaymentStatus[]).map((s) => (
+                            <option key={s} value={s}>
+                              {paymentStatusLabel[s]}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                    <p className="opacity-80">
                       {m.unit_price != null && `@ ${m.unit_price}`}
                       {m.subscribers?.name && ` · ${m.subscribers.name}`}
                       {m.note && ` · ${m.note}`}
@@ -476,6 +533,25 @@ export function ProductsPage() {
             className={`${inputClass} mb-4`}
             required
           />
+
+          {movementForm.movement_type === 'sale' && (
+            <>
+              <label className={labelClass}>Payment status</label>
+              <select
+                value={movementForm.payment_status}
+                onChange={(e) =>
+                  setMovementForm((f) => ({ ...f, payment_status: e.target.value as MovementPaymentStatus }))
+                }
+                className={`${inputClass} mb-4`}
+              >
+                {(Object.keys(paymentStatusLabel) as MovementPaymentStatus[]).map((s) => (
+                  <option key={s} value={s}>
+                    {paymentStatusLabel[s]}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
 
           <label className={labelClass}>Subscriber (if sold/installed for one)</label>
           <select

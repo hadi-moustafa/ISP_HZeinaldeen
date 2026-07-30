@@ -14,7 +14,7 @@ const SUBSCRIBER_SELECT = `
   subscriber_addresses(line1, city, is_primary)
 `
 
-export type SubscriberSearchField = 'name' | 'id' | 'owner'
+export type SubscriberSearchField = 'name' | 'id' | 'owner' | 'username'
 
 export async function listSubscribersLite() {
   const { data, error } = await supabase
@@ -43,6 +43,12 @@ export async function listSubscribers(
   if (filters.status) query = query.eq('connection_status', filters.status)
   if (filters.expiryFrom) query = query.gte('expiry_date', filters.expiryFrom)
   if (filters.expiryTo) query = query.lte('expiry_date', filters.expiryTo)
+  if (filters.connectionFrom) query = query.gte('connection_date', filters.connectionFrom)
+  if (filters.connectionTo) query = query.lte('connection_date', filters.connectionTo)
+  if (filters.phone.trim()) query = query.ilike('phone', `%${filters.phone.trim().replace(/[%,]/g, '')}%`)
+  if (filters.nationalId.trim())
+    query = query.ilike('national_id', `%${filters.nationalId.trim().replace(/[%,]/g, '')}%`)
+  if (filters.notes.trim()) query = query.ilike('notes', `%${filters.notes.trim().replace(/[%,]/g, '')}%`)
 
   if (filters.search.trim() && searchField !== 'id') {
     // 'id' search is applied client-side after fetch -- PostgREST doesn't
@@ -52,6 +58,8 @@ export async function listSubscribers(
     const term = filters.search.trim().replace(/[%,]/g, '')
     if (searchField === 'owner') {
       query = query.in('owner_id', ownerIdsForSearch && ownerIdsForSearch.length > 0 ? ownerIdsForSearch : [''])
+    } else if (searchField === 'username') {
+      query = query.ilike('external_username', `%${term}%`)
     } else {
       query = query.ilike('name', `%${term}%`)
     }

@@ -10,6 +10,8 @@ import {
   deleteCompanyAddress,
 } from '../../lib/api/companies'
 import type { Company, CompanyAddress } from '../../types/reference'
+import { logActivity } from '../../lib/api/activityLog'
+import { useStaff } from '../../context/StaffContext'
 import { Modal } from '../../components/Modal'
 import {
   inputClass,
@@ -31,6 +33,7 @@ const emptyAddressForm = {
 }
 
 export function CompaniesPage() {
+  const { staff } = useStaff()
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -97,8 +100,10 @@ export function CompaniesPage() {
     try {
       if (editingCompany) {
         await updateCompany(editingCompany.id, input)
+        logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} edited company ${input.name}`, 'company', editingCompany.id)
       } else {
-        await createCompany(input)
+        const created = await createCompany(input)
+        logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} created company ${input.name}`, 'company', created.id)
       }
       setCompanyModalOpen(false)
       await refresh()
@@ -111,6 +116,7 @@ export function CompaniesPage() {
     if (!confirm(`Delete company "${company.name}"? This fails if it still has services.`)) return
     try {
       await deleteCompany(company.id)
+      logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} deleted company ${company.name}`, 'company', company.id)
       await refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete company')

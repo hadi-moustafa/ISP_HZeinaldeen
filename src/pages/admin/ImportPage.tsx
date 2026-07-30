@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStaff } from '../../context/StaffContext'
 import { createService } from '../../lib/api/services'
+import { logActivity } from '../../lib/api/activityLog'
 import {
   parseWorkbookFile,
   normalizeRows,
@@ -165,6 +166,11 @@ export function ImportPage() {
           reason: r.issues.map((i) => (i.type === 'missing_username' ? 'missing username' : 'duplicate username in file')).join(', '),
         }))
       const res = await importSubscribersBatch(batchRows, filename, staff?.id ?? null, rows.length, skipped)
+      logActivity(
+        staff?.id ?? null,
+        `${staff?.username ?? 'Someone'} imported ${filename}: ${res.created} created, ${res.updated} updated, ${res.skipped} skipped`,
+        'import',
+      )
       setResult(res)
       setStep('result')
       listImportLogs().then(setLogs).catch(() => {})

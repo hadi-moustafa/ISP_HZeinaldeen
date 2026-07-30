@@ -3,6 +3,8 @@ import { listServices, createService, updateService, deleteService } from '../..
 import { listCompanies } from '../../lib/api/companies'
 import type { Company, ServiceWithCompany } from '../../types/reference'
 import { Modal } from '../../components/Modal'
+import { logActivity } from '../../lib/api/activityLog'
+import { useStaff } from '../../context/StaffContext'
 import {
   inputClass,
   labelClass,
@@ -21,6 +23,7 @@ const emptyForm = {
 }
 
 export function ServicesPage() {
+  const { staff } = useStaff()
   const [services, setServices] = useState<ServiceWithCompany[]>([])
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(true)
@@ -78,8 +81,10 @@ export function ServicesPage() {
     try {
       if (editing) {
         await updateService(editing.id, input)
+        logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} edited service ${input.name}`, 'service', editing.id)
       } else {
-        await createService(input)
+        const created = await createService(input)
+        logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} created service ${input.name}`, 'service', created.id)
       }
       setModalOpen(false)
       await refresh()
@@ -92,6 +97,7 @@ export function ServicesPage() {
     if (!confirm(`Delete service "${service.name}"? This fails if subscribers use it.`)) return
     try {
       await deleteService(service.id)
+      logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} deleted service ${service.name}`, 'service', service.id)
       await refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete service')

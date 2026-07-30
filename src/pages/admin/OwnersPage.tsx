@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { listOwners, createOwner, updateOwner, deleteOwner } from '../../lib/api/owners'
 import type { Owner } from '../../types/reference'
+import { logActivity } from '../../lib/api/activityLog'
+import { useStaff } from '../../context/StaffContext'
 import { Modal } from '../../components/Modal'
 import {
   inputClass,
@@ -14,6 +16,7 @@ import {
 const emptyForm = { name: '', phone: '' }
 
 export function OwnersPage() {
+  const { staff } = useStaff()
   const [owners, setOwners] = useState<Owner[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -56,8 +59,10 @@ export function OwnersPage() {
     try {
       if (editing) {
         await updateOwner(editing.id, input)
+        logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} edited owner ${input.name}`, 'owner', editing.id)
       } else {
-        await createOwner(input)
+        const created = await createOwner(input)
+        logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} created owner ${input.name}`, 'owner', created.id)
       }
       setModalOpen(false)
       await refresh()
@@ -70,6 +75,7 @@ export function OwnersPage() {
     if (!confirm(`Delete owner "${owner.name}"?`)) return
     try {
       await deleteOwner(owner.id)
+      logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} deleted owner ${owner.name}`, 'owner', owner.id)
       await refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete owner')

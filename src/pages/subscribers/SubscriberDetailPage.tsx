@@ -11,6 +11,8 @@ import {
 import type { SubscriberAddress, SubscriberWithRelations } from '../../types/subscribers'
 import type { Collector } from '../../types/reference'
 import { listCollectors } from '../../lib/api/collectors'
+import { logActivity } from '../../lib/api/activityLog'
+import { useStaff } from '../../context/StaffContext'
 import { Modal } from '../../components/Modal'
 import { InvoicesSection } from '../../components/subscriber/InvoicesSection'
 import {
@@ -41,6 +43,7 @@ const statusBadgeClass: Record<string, string> = {
 export function SubscriberDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { staff } = useStaff()
 
   const [subscriber, setSubscriber] = useState<SubscriberWithRelations | null>(null)
   const [addresses, setAddresses] = useState<SubscriberAddress[]>([])
@@ -83,6 +86,7 @@ export function SubscriberDetailPage() {
       return
     try {
       await deleteSubscriber(id)
+      logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} deleted subscriber ${subscriber.name}`, 'subscriber', id)
       navigate('/subscribers')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete subscriber')
@@ -206,9 +210,9 @@ export function SubscriberDetailPage() {
             </dd>
           </div>
           <div>
-            <dt className="text-neutral-500 dark:text-neutral-400">Expiry date</dt>
+            <dt className="text-neutral-500 dark:text-neutral-400">Expiry day</dt>
             <dd className="text-neutral-900 dark:text-neutral-100">
-              {subscriber.expiry_date ?? '—'}
+              {subscriber.expiry_date ? new Date(subscriber.expiry_date).getUTCDate() : '—'}
             </dd>
           </div>
         </dl>
@@ -353,6 +357,7 @@ export function SubscriberDetailPage() {
         subscriberPhone={subscriber.phone}
         defaultCollectorId={subscriber.default_collector_id}
         collectors={collectors}
+        onChanged={refresh}
       />
     </div>
   )

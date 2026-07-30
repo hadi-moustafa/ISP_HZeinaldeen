@@ -1,5 +1,5 @@
 import { supabase } from '../supabase'
-import type { ProductMovementWithSubscriber } from '../../types/movements'
+import type { MovementPaymentStatus, ProductMovementWithSubscriber } from '../../types/movements'
 
 export async function listMovementsForProduct(productId: string) {
   const { data, error } = await supabase
@@ -21,9 +21,19 @@ export interface MovementInput {
   staff_id: string | null
   note: string | null
   movement_date: string
+  payment_status: MovementPaymentStatus
 }
 
 export async function createMovement(input: MovementInput) {
-  const { error } = await supabase.from('product_movements').insert(input)
+  const { data, error } = await supabase.from('product_movements').insert(input).select().single()
+  if (error) throw error
+  return data as unknown as ProductMovementWithSubscriber
+}
+
+export async function updateMovementPaymentStatus(id: string, paymentStatus: MovementPaymentStatus) {
+  const { error } = await supabase
+    .from('product_movements')
+    .update({ payment_status: paymentStatus })
+    .eq('id', id)
   if (error) throw error
 }
