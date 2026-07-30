@@ -17,6 +17,8 @@ Repo: `github.com/hadi-moustafa/ISP_HZeinaldeen`, branch `main`. Live on Vercel 
 
 Supabase project ref: `keivdjxabhvdaagrcbtg` (`https://keivdjxabhvdaagrcbtg.supabase.co`).
 
+`vercel.json` rewrites every path to `/index.html` — required for a client-side-routed SPA (`react-router-dom` `BrowserRouter`) on Vercel's static hosting. Without it, a direct hit or reload on any non-root route (e.g. `/subscribers`) 404s at Vercel's edge before React Router ever loads, since Vercel otherwise looks for a literal file at that path. Don't remove this.
+
 ## Commands
 
 
