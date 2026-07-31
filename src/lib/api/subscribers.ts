@@ -6,7 +6,8 @@ const SUBSCRIBER_SELECT = `
   owners(name),
   default_collector:collectors!default_collector_id(name),
   services(name, sell_price, companies(name)),
-  regions(name)
+  regions(name),
+  company:companies!company_id(name)
 `
 
 export type SubscriberSearchField = 'name' | 'id' | 'owner' | 'username'
@@ -93,14 +94,21 @@ export interface SubscriberInput {
   phone: string | null
   nationality: Subscriber['nationality']
   address: string | null
+  building: string | null
   region_id: string | null
   service_id: string | null
+  company_id: string | null
   owner_id: string | null
   default_collector_id: string | null
   connection_status: Subscriber['connection_status']
   expiry_date: string | null
   connection_date: string | null
   notes: string | null
+  password: string | null
+  switch: string | null
+  mac_address: string | null
+  price: number | null
+  balance: number | null
 }
 
 export async function createSubscriber(input: SubscriberInput) {

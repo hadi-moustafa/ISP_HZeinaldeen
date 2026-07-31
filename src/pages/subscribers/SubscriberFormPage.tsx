@@ -9,11 +9,12 @@ import {
 import { listOwners } from '../../lib/api/owners'
 import { listCollectors } from '../../lib/api/collectors'
 import { listServices } from '../../lib/api/services'
+import { listCompanies } from '../../lib/api/companies'
 import { listRegions } from '../../lib/api/regions'
 import { createInvoice } from '../../lib/api/invoices'
 import { logActivity } from '../../lib/api/activityLog'
 import { useStaff } from '../../context/StaffContext'
-import type { Owner, Collector, ServiceWithCompany, Region } from '../../types/reference'
+import type { Owner, Collector, ServiceWithCompany, Region, Company } from '../../types/reference'
 import { inputClass, labelClass, primaryButtonClass, secondaryButtonClass } from '../../lib/uiClasses'
 
 function currentPeriodMonth() {
@@ -26,14 +27,21 @@ const emptyForm: SubscriberInput = {
   phone: '',
   nationality: null,
   address: '',
+  building: '',
   region_id: '',
   service_id: '',
+  company_id: '',
   owner_id: '',
   default_collector_id: '',
   connection_status: 'active',
   expiry_date: '',
   connection_date: '',
   notes: '',
+  password: '',
+  switch: '',
+  mac_address: '',
+  price: null,
+  balance: null,
 }
 
 export function SubscriberFormPage() {
@@ -45,6 +53,7 @@ export function SubscriberFormPage() {
   const [owners, setOwners] = useState<Owner[]>([])
   const [collectors, setCollectors] = useState<Collector[]>([])
   const [services, setServices] = useState<ServiceWithCompany[]>([])
+  const [companies, setCompanies] = useState<Company[]>([])
   const [regions, setRegions] = useState<Region[]>([])
   const [form, setForm] = useState<SubscriberInput>(emptyForm)
   const [loading, setLoading] = useState(isEdit)
@@ -52,11 +61,12 @@ export function SubscriberFormPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    Promise.all([listOwners(), listCollectors(), listServices(), listRegions()])
-      .then(([o, c, s, r]) => {
+    Promise.all([listOwners(), listCollectors(), listServices(), listCompanies(), listRegions()])
+      .then(([o, c, s, comp, r]) => {
         setOwners(o)
         setCollectors(c)
         setServices(s)
+        setCompanies(comp)
         setRegions(r)
         // New subscribers default to collector "hussien" -- client-specified
         // default. Only applies on create; editing an existing subscriber
@@ -70,6 +80,10 @@ export function SubscriberFormPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const filteredServices = form.company_id
+    ? services.filter((s) => s.comp_id === form.company_id)
+    : services
+
   useEffect(() => {
     if (!id) return
     getSubscriber(id)
@@ -79,14 +93,21 @@ export function SubscriberFormPage() {
           phone: sub.phone ?? '',
           nationality: sub.nationality,
           address: sub.address ?? '',
+          building: sub.building ?? '',
           region_id: sub.region_id ?? '',
           service_id: sub.service_id ?? '',
+          company_id: sub.company_id ?? '',
           owner_id: sub.owner_id ?? '',
           default_collector_id: sub.default_collector_id ?? '',
           connection_status: sub.connection_status,
           expiry_date: sub.expiry_date ?? '',
           connection_date: sub.connection_date ?? '',
           notes: sub.notes ?? '',
+          password: sub.password ?? '',
+          switch: sub.switch ?? '',
+          mac_address: sub.mac_address ?? '',
+          price: sub.price,
+          balance: sub.balance,
         })
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load subscriber'))
@@ -106,13 +127,18 @@ export function SubscriberFormPage() {
       phone: form.phone || null,
       nationality: form.nationality || null,
       address: form.address || null,
+      building: form.building || null,
       region_id: form.region_id || null,
       service_id: form.service_id || null,
+      company_id: form.company_id || null,
       owner_id: form.owner_id || null,
       default_collector_id: form.default_collector_id || null,
       expiry_date: form.expiry_date || null,
       connection_date: form.connection_date || null,
       notes: form.notes || null,
+      password: form.password || null,
+      switch: form.switch || null,
+      mac_address: form.mac_address || null,
     }
     try {
       if (isEdit && id) {
@@ -200,36 +226,72 @@ export function SubscriberFormPage() {
             />
           </div>
           <div>
-            <label className={labelClass}>Region</label>
-            <select
-              value={form.region_id ?? ''}
-              onChange={(e) => update('region_id', e.target.value)}
+            <label className={labelClass}>Building</label>
+            <input
+              value={form.building ?? ''}
+              onChange={(e) => update('building', e.target.value)}
               className={inputClass}
-            >
-              <option value="">None</option>
-              {regions.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
+            />
           </div>
         </div>
 
         <div>
-          <label className={labelClass}>Service</label>
+          <label className={labelClass}>Region</label>
           <select
-            value={form.service_id ?? ''}
-            onChange={(e) => update('service_id', e.target.value)}
+            value={form.region_id ?? ''}
+            onChange={(e) => update('region_id', e.target.value)}
             className={inputClass}
           >
             <option value="">None</option>
-            {services.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} ({s.companies?.name})
+            {regions.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={labelClass}>Company</label>
+            <select
+              value={form.company_id ?? ''}
+              onChange={(e) => {
+                const company_id = e.target.value
+                update('company_id', company_id)
+                // Clear the service if it no longer belongs to the newly
+                // chosen company, same narrowing pattern as the subscriber
+                // list's Company -> Service filter.
+                setForm((f) => {
+                  const stillValid = services.find((s) => s.id === f.service_id)?.comp_id === company_id
+                  return { ...f, company_id, service_id: stillValid || !company_id ? f.service_id : '' }
+                })
+              }}
+              className={inputClass}
+            >
+              <option value="">None</option>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Service</label>
+            <select
+              value={form.service_id ?? ''}
+              onChange={(e) => update('service_id', e.target.value)}
+              className={inputClass}
+            >
+              <option value="">None</option>
+              {filteredServices.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.companies?.name})
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -309,6 +371,63 @@ export function SubscriberFormPage() {
             className={inputClass}
             rows={3}
           />
+        </div>
+
+        <h2 className="pt-2 text-sm font-semibold text-neutral-500 dark:text-neutral-400">
+          Technical &amp; billing details
+        </h2>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={labelClass}>Password</label>
+            <input
+              value={form.password ?? ''}
+              onChange={(e) => update('password', e.target.value)}
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Switch</label>
+            <input
+              value={form.switch ?? ''}
+              onChange={(e) => update('switch', e.target.value)}
+              className={inputClass}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className={labelClass}>MAC address</label>
+          <input
+            value={form.mac_address ?? ''}
+            onChange={(e) => update('mac_address', e.target.value)}
+            className={inputClass}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={labelClass}>Price (this subscriber's sell price)</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={form.price ?? ''}
+              onChange={(e) => update('price', e.target.value === '' ? null : Number(e.target.value))}
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Balance (this subscriber's cost to company)</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={form.balance ?? ''}
+              onChange={(e) => update('balance', e.target.value === '' ? null : Number(e.target.value))}
+              className={inputClass}
+            />
+          </div>
         </div>
 
         <div className="flex justify-end gap-2">

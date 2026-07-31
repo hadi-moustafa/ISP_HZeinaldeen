@@ -47,8 +47,7 @@ export function SubscriberDetailPage() {
 
   async function remove() {
     if (!id || !subscriber) return
-    if (!confirm(`Delete subscriber "${subscriber.name}"? This also deletes their addresses.`))
-      return
+    if (!confirm(`Delete subscriber "${subscriber.name}"?`)) return
     try {
       await deleteSubscriber(id)
       logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} deleted subscriber ${subscriber.name}`, 'subscriber', id)
@@ -97,7 +96,7 @@ export function SubscriberDetailPage() {
           <div>
             <dt className="text-neutral-500 dark:text-neutral-400">Company</dt>
             <dd className="text-neutral-900 dark:text-neutral-100">
-              {subscriber.services?.companies?.name ?? '—'}
+              {subscriber.company?.name ?? '—'}
             </dd>
           </div>
           <div>
@@ -132,11 +131,41 @@ export function SubscriberDetailPage() {
             <dt className="text-neutral-500 dark:text-neutral-400">Region</dt>
             <dd className="text-neutral-900 dark:text-neutral-100">{subscriber.regions?.name ?? '—'}</dd>
           </div>
+          <div>
+            <dt className="text-neutral-500 dark:text-neutral-400">Building</dt>
+            <dd className="text-neutral-900 dark:text-neutral-100">{subscriber.building ?? '—'}</dd>
+          </div>
         </dl>
 
         {subscriber.notes && (
           <p className="mt-4 text-sm text-neutral-600 dark:text-neutral-300">{subscriber.notes}</p>
         )}
+
+        <h2 className="mb-2 mt-4 text-sm font-semibold text-neutral-500 dark:text-neutral-400">
+          Technical &amp; billing details
+        </h2>
+        <dl className="grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <dt className="text-neutral-500 dark:text-neutral-400">Password</dt>
+            <dd className="text-neutral-900 dark:text-neutral-100">{subscriber.password ?? '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-neutral-500 dark:text-neutral-400">Switch</dt>
+            <dd className="text-neutral-900 dark:text-neutral-100">{subscriber.switch ?? '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-neutral-500 dark:text-neutral-400">MAC address</dt>
+            <dd className="text-neutral-900 dark:text-neutral-100">{subscriber.mac_address ?? '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-neutral-500 dark:text-neutral-400">Price</dt>
+            <dd className="text-neutral-900 dark:text-neutral-100">{subscriber.price ?? '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-neutral-500 dark:text-neutral-400">Balance</dt>
+            <dd className="text-neutral-900 dark:text-neutral-100">{subscriber.balance ?? '—'}</dd>
+          </div>
+        </dl>
 
         <div className="mt-4 flex gap-2">
           <Link to={`/subscribers/${subscriber.id}/edit`} className={secondaryButtonClass}>

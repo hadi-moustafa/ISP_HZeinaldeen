@@ -1,8 +1,12 @@
-import type { ConnectionStatus } from './subscribers'
+import type { ConnectionStatus, Nationality } from './subscribers'
 
 // One row of the parsed Excel file, keyed by the exact header names the ISP
 // panel's export uses. Matched by header name, not column position, so a
-// future export with reordered/extra columns still works.
+// future export with reordered/extra columns still works. Reseller ->
+// owners (who the account belongs to) and Company -> companies (the
+// network operator) are deliberately separate fields -- Company also
+// disambiguates which Service row to use when a service name exists under
+// more than one company.
 export interface RawImportRow {
   Username: string
   Name: string
@@ -13,6 +17,7 @@ export interface RawImportRow {
   Reseller: string
   Expiry: string | Date
   Service: string
+  Company: string
   Blocked: string | number
   Switch: string
   'Date Created': string | Date
@@ -38,6 +43,7 @@ export type ColumnMapping = Record<string, CanonicalHeader | ''>
 export type RowIssue =
   | { type: 'missing_username' }
   | { type: 'duplicate_username' }
+  | { type: 'missing_company' }
 
 export interface ParsedRow {
   rowIndex: number // 1-based position in the source file, for display
@@ -48,11 +54,18 @@ export interface ParsedRow {
   connectionStatus: ConnectionStatus
   expiryDate: string | null // YYYY-MM-DD
   connectionDate: string | null // YYYY-MM-DD
-  resellerName: string
+  ownerName: string | null // from Reseller
+  companyName: string // from Company -- also disambiguates Service matches
   serviceName: string
   collectorName: string | null
   address: { line1: string | null; region: string | null } | null
-  importMetadata: { password: string | null; switch: string | null; mac_address: string | null; nationality: string | null }
+  building: string | null
+  password: string | null
+  switchValue: string | null
+  macAddress: string | null
+  price: number | null
+  balance: number | null
+  nationality: Nationality | null
   issues: RowIssue[]
   existingSubscriberId: string | null // set once matched against current DB state
 }
@@ -66,10 +79,18 @@ export interface ImportBatchRow {
   expiry_date: string | null
   connection_date: string | null
   service_id: string
+  company_id: string
+  owner_name: string | null
   has_collector: boolean
   default_collector_id: string | null
   address: { line1: string | null; region: string | null } | null
-  import_metadata: Record<string, unknown>
+  building: string | null
+  password: string | null
+  switch: string | null
+  mac_address: string | null
+  price: number | null
+  balance: number | null
+  nationality: Nationality | null
 }
 
 export interface ImportLog {

@@ -20,34 +20,36 @@ import type { Company, Collector, ServiceWithCompany } from '../../types/referen
 // because the admin gets to fix the mapping before any row data is read.
 export const CANONICAL_HEADERS: CanonicalHeader[] = [
   'Username', 'Name', 'Password', 'Address', 'Mobile', 'Note', 'Reseller',
-  'Expiry', 'Service', 'Blocked', 'Switch', 'Date Created', 'Price',
-  'Balance', 'Region', 'Building', 'Nationality', 'Mac Address', 'Collector',
+  'Expiry', 'Service', 'Company', 'Blocked', 'Switch', 'Date Created',
+  'Price', 'Balance', 'Region', 'Building', 'Nationality', 'Mac Address',
+  'Collector',
 ]
 
 export const CANONICAL_HEADER_LABELS: Record<CanonicalHeader, string> = {
   Username: 'Username (dedupe key)',
   Name: 'Subscriber name',
-  Password: 'Password (kept as metadata only)',
+  Password: 'Password',
   Address: 'Address line',
   Mobile: 'Phone',
   Note: 'Notes',
-  Reseller: 'Company (Reseller)',
+  Reseller: 'Owner (Reseller)',
   Expiry: 'Expiry date',
   Service: 'Service / plan',
+  Company: 'Company (network operator)',
   Blocked: 'Blocked flag (1 = suspended)',
-  Switch: 'Switch (metadata only)',
+  Switch: 'Switch',
   'Date Created': 'Connection date',
-  Price: 'Price (ignored, not used for billing)',
-  Balance: 'Balance (ignored, not used for billing)',
+  Price: "Price (subscriber's own sell price)",
+  Balance: "Balance (subscriber's own cost to company)",
   Region: 'Region',
-  Building: 'Building (folded into address line)',
-  Nationality: 'Nationality (metadata only)',
-  'Mac Address': 'MAC address (metadata only)',
+  Building: 'Building',
+  Nationality: 'Nationality (Lebanese/Syrian)',
+  'Mac Address': 'MAC address',
   Collector: 'Collector',
 }
 
 // Fields a usable import can't proceed without.
-export const REQUIRED_CANONICAL_HEADERS: CanonicalHeader[] = ['Username', 'Name']
+export const REQUIRED_CANONICAL_HEADERS: CanonicalHeader[] = ['Username', 'Name', 'Company']
 
 function normalizeHeaderKey(header: string) {
   return header.trim().toLowerCase().replace(/\s+/g, ' ')
@@ -141,6 +143,23 @@ function blankToNull(value: unknown): string | null {
   return str === '' ? null : str
 }
 
+function parseNumber(value: unknown): number | null {
+  if (value == null || value === '') return null
+  const n = Number(String(value).trim())
+  return Number.isFinite(n) ? n : null
+}
+
+// Common phrasing variants map to the two values the app's nationality
+// dropdown accepts; anything else is left blank rather than blocking the
+// import (nationality isn't required for billing to work).
+function normalizeNationality(value: unknown): 'Lebanese' | 'Syrian' | null {
+  const str = String(value ?? '').trim().toLowerCase()
+  if (!str) return null
+  if (str.startsWith('leb') || str === 'lb') return 'Lebanese'
+  if (str.startsWith('syr') || str === 'sy') return 'Syrian'
+  return null
+}
+
 // --- Step 2: normalize raw rows into the app's shape ----------------------
 
 export function normalizeRows(rawRows: RawImportRow[]): ParsedRow[] {
@@ -159,30 +178,27 @@ export function normalizeRows(rawRows: RawImportRow[]): ParsedRow[] {
       connectionStatus: blocked === '1' ? 'suspended' : 'active',
       expiryDate: parseExcelDate(raw.Expiry),
       connectionDate: parseExcelDate(raw['Date Created']),
-      resellerName: String(raw.Reseller ?? '').trim(),
+      ownerName: blankToNull(raw.Reseller),
+      companyName: String(raw.Company ?? '').trim(),
       serviceName: String(raw.Service ?? '').trim(),
       collectorName: blankToNull(raw.Collector),
-      // Subscribers now carry a single address line -- Building no longer has
-      // a column to land in on its own, so it's folded into the address line
-      // rather than dropped outright.
       address:
-        blankToNull(raw.Address) || blankToNull(raw.Region) || blankToNull(raw.Building)
-          ? {
-              line1: [blankToNull(raw.Address), blankToNull(raw.Building)].filter(Boolean).join(', ') || null,
-              region: blankToNull(raw.Region),
-            }
+        blankToNull(raw.Address) || blankToNull(raw.Region)
+          ? { line1: blankToNull(raw.Address), region: blankToNull(raw.Region) }
           : null,
-      importMetadata: {
-        password: blankToNull(raw.Password),
-        switch: blankToNull(raw.Switch),
-        mac_address: blankToNull(raw['Mac Address']),
-        nationality: blankToNull(raw.Nationality),
-      },
+      building: blankToNull(raw.Building),
+      password: blankToNull(raw.Password),
+      switchValue: blankToNull(raw.Switch),
+      macAddress: blankToNull(raw['Mac Address']),
+      price: parseNumber(raw.Price),
+      balance: parseNumber(raw.Balance),
+      nationality: normalizeNationality(raw.Nationality),
       issues: [],
       existingSubscriberId: null,
     }
 
     if (!externalUsername) row.issues.push({ type: 'missing_username' })
+    if (!row.companyName) row.issues.push({ type: 'missing_company' })
     return row
   })
 
@@ -256,17 +272,16 @@ export function matchRows(rows: ParsedRow[], ref: ImportReferenceData) {
   const unresolvedServices = new Set<string>()
 
   for (const row of rows) {
-    if (row.resellerName && !companyByName.has(normalizeName(row.resellerName))) {
-      unresolvedCompanies.add(row.resellerName)
+    if (row.companyName && !companyByName.has(normalizeName(row.companyName))) {
+      unresolvedCompanies.add(row.companyName)
     }
     if (row.serviceName && !serviceByName.has(normalizeName(row.serviceName))) {
       unresolvedServices.add(row.serviceName)
     }
-    if (row.collectorName && !collectorByName.has(normalizeName(row.collectorName))) {
-      // Collector matching failures don't block import -- fall back to
-      // leaving the subscriber's existing collector untouched, same as a
-      // blank Collector column.
-    }
+    // Owner (Reseller) and Collector matching failures don't block import.
+    // Owner is auto-created by name inside the RPC (low-stakes, just a
+    // label); Collector falls back to leaving the subscriber's existing
+    // collector untouched, same as a blank Collector column.
   }
 
   return {
@@ -284,8 +299,16 @@ export interface ServiceResolutionContext {
   serviceByName: Map<string, ServiceWithCompany[]>
   companyByName: Map<string, Company>
   collectorByName: Map<string, Collector>
-  companyResolutions: Map<string, string> // reseller name (normalized) -> company id, for admin-mapped resellers
+  companyResolutions: Map<string, string> // company name (normalized) -> company id, for admin-mapped companies
   serviceOverrides: Map<string, string> // service name (normalized) -> service id, for admin-mapped/created services
+}
+
+function resolveCompanyIdForRow(row: ParsedRow, ctx: ServiceResolutionContext): string | null {
+  return (
+    ctx.companyByName.get(normalizeName(row.companyName))?.id ??
+    ctx.companyResolutions.get(normalizeName(row.companyName)) ??
+    null
+  )
 }
 
 function resolveServiceIdForRow(row: ParsedRow, ctx: ServiceResolutionContext): string | null {
@@ -293,9 +316,7 @@ function resolveServiceIdForRow(row: ParsedRow, ctx: ServiceResolutionContext): 
   const candidates = ctx.serviceByName.get(serviceKey) ?? []
   if (candidates.length === 1) return candidates[0].id
   if (candidates.length > 1) {
-    const companyId =
-      ctx.companyByName.get(normalizeName(row.resellerName))?.id ??
-      ctx.companyResolutions.get(normalizeName(row.resellerName))
+    const companyId = resolveCompanyIdForRow(row, ctx)
     return candidates.find((c) => c.comp_id === companyId)?.id ?? candidates[0].id
   }
   return ctx.serviceOverrides.get(serviceKey) ?? null
@@ -307,6 +328,8 @@ export function buildBatchRows(rows: ParsedRow[], ctx: ServiceResolutionContext)
     .map((row) => {
       const serviceId = resolveServiceIdForRow(row, ctx)
       if (!serviceId) throw new Error(`Row ${row.rowIndex}: service "${row.serviceName}" is unresolved`)
+      const companyId = resolveCompanyIdForRow(row, ctx)
+      if (!companyId) throw new Error(`Row ${row.rowIndex}: company "${row.companyName}" is unresolved`)
       const collector = row.collectorName ? ctx.collectorByName.get(normalizeName(row.collectorName)) : null
 
       return {
@@ -318,10 +341,18 @@ export function buildBatchRows(rows: ParsedRow[], ctx: ServiceResolutionContext)
         expiry_date: row.expiryDate,
         connection_date: row.connectionDate,
         service_id: serviceId,
+        company_id: companyId,
+        owner_name: row.ownerName,
         has_collector: Boolean(collector),
         default_collector_id: collector?.id ?? null,
         address: row.address,
-        import_metadata: row.importMetadata,
+        building: row.building,
+        password: row.password,
+        switch: row.switchValue,
+        mac_address: row.macAddress,
+        price: row.price,
+        balance: row.balance,
+        nationality: row.nationality,
       }
     })
 }

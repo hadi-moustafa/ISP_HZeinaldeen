@@ -7,8 +7,10 @@ export interface Subscriber {
   phone: string | null
   nationality: Nationality | null
   address: string | null
+  building: string | null
   region_id: string | null
   service_id: string | null
+  company_id: string | null
   owner_id: string | null
   default_collector_id: string | null
   connection_status: ConnectionStatus
@@ -16,7 +18,11 @@ export interface Subscriber {
   connection_date: string | null
   notes: string | null
   external_username: string | null
-  import_metadata: Record<string, unknown>
+  password: string | null
+  switch: string | null
+  mac_address: string | null
+  price: number | null
+  balance: number | null
   created_at: string
   updated_at: string
 }
@@ -26,6 +32,7 @@ export interface SubscriberWithRelations extends Subscriber {
   default_collector: { name: string } | null
   services: { name: string; sell_price: number; companies: { name: string } | null } | null
   regions: { name: string } | null
+  company: { name: string } | null
 }
 
 export type DebtFilterMode = 'any' | 'in_debt' | 'paid_up'

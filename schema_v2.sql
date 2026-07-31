@@ -185,25 +185,43 @@ CREATE TABLE regions (
 -- ============================================================
 -- SUBSCRIBERS (the ISP's end customers — was "user" in v1)
 -- ============================================================
+-- Every column from the ISP panel's Excel export has a real, named field
+-- here (0012_full_import_columns.sql) rather than a jsonb metadata catch-all
+-- -- explicit client instruction, one column in the file = one column in
+-- this table. company_id is a denormalized mirror of the assigned service's
+-- own company (services.comp_id) since Company also disambiguates which
+-- Service row to import against when a service name exists under more than
+-- one company; kept in sync at write time (form submit, import), not
+-- independently editable of the service. price/balance are PER-SUBSCRIBER
+-- override fields, independent of services.sell_price/paid_price (the
+-- shared default for everyone on that plan) -- these do not feed invoicing.
 CREATE TABLE subscribers (
     id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name                 TEXT NOT NULL,
     phone                TEXT,
     nationality          TEXT CHECK (nationality IS NULL OR nationality IN ('Lebanese', 'Syrian')),
     address              TEXT, -- single free-text address line; area/region is the dropdown below
+    building             TEXT,
     region_id            UUID REFERENCES regions(id) ON DELETE SET NULL,
     service_id           UUID REFERENCES services(id) ON DELETE RESTRICT,
-    owner_id             UUID REFERENCES owners(id) ON DELETE SET NULL,     -- whose customer this is (one owner -> many subscribers)
+    company_id           UUID REFERENCES companies(id) ON DELETE SET NULL, -- mirrors service_id's company; see note above
+    owner_id             UUID REFERENCES owners(id) ON DELETE SET NULL,     -- whose customer this is (one owner -> many subscribers) -- "Reseller" in the import
     default_collector_id UUID REFERENCES collectors(id) ON DELETE SET NULL, -- usual collector; can be overridden per-payment
     connection_status    TEXT NOT NULL DEFAULT 'active'
                            CHECK (connection_status IN ('active', 'suspended', 'cancelled')),
     expiry_date          DATE,
     connection_date      DATE,
     notes                TEXT,
+    password             TEXT, -- router/service password, not a login credential for this app
+    switch               TEXT, -- network switch identifier, opaque string
+    mac_address          TEXT,
+    price                DECIMAL(10,2), -- per-subscriber sell price override, informational only
+    balance              DECIMAL(10,2), -- per-subscriber cost-to-company override, informational only
     created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_subscribers_service_id ON subscribers(service_id);
+CREATE INDEX idx_subscribers_company_id ON subscribers(company_id);
 CREATE INDEX idx_subscribers_owner_id ON subscribers(owner_id);
 CREATE INDEX idx_subscribers_default_collector_id ON subscribers(default_collector_id);
 CREATE INDEX idx_subscribers_connection_status ON subscribers(connection_status);

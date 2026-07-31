@@ -138,7 +138,9 @@ export function ImportPage() {
   const validRows = rows.filter((r) => r.issues.length === 0)
   const newRows = validRows.filter((r) => !r.existingSubscriberId)
   const updateRows = validRows.filter((r) => r.existingSubscriberId)
-  const invalidRows = rows.filter((r) => r.issues.some((i) => i.type === 'missing_username'))
+  const invalidRows = rows.filter((r) =>
+    r.issues.some((i) => i.type === 'missing_username' || i.type === 'missing_company'),
+  )
   const duplicateRows = rows.filter((r) => r.issues.some((i) => i.type === 'duplicate_username'))
   const blockedRows = rows.filter((r) => r.connectionStatus === 'suspended')
 
@@ -205,7 +207,15 @@ export function ImportPage() {
         .map((r) => ({
           row: r.rowIndex,
           username: r.externalUsername || '(blank)',
-          reason: r.issues.map((i) => (i.type === 'missing_username' ? 'missing username' : 'duplicate username in file')).join(', '),
+          reason: r.issues
+            .map((i) =>
+              i.type === 'missing_username'
+                ? 'missing username'
+                : i.type === 'missing_company'
+                  ? 'missing company'
+                  : 'duplicate username in file',
+            )
+            .join(', '),
         }))
       const res = await importSubscribersBatch(batchRows, filename, staff?.id ?? null, rows.length, skipped)
       logActivity(
@@ -379,7 +389,7 @@ export function ImportPage() {
         <Stat label="Total rows" value={rows.length} />
         <Stat label="New subscribers" value={newRows.length} tone="text-emerald-600 dark:text-emerald-400" />
         <Stat label="Will update" value={updateRows.length} tone="text-blue-600 dark:text-blue-400" />
-        <Stat label="Invalid (no username)" value={invalidRows.length} tone="text-red-600 dark:text-red-400" />
+        <Stat label="Invalid (missing username/company)" value={invalidRows.length} tone="text-red-600 dark:text-red-400" />
       </div>
 
       {blockedRows.length > 0 && (
@@ -401,7 +411,7 @@ export function ImportPage() {
       {matched.unresolvedCompanies.length > 0 && (
         <div className="mb-4">
           <h2 className="mb-2 text-sm font-semibold text-neutral-700 dark:text-neutral-300">
-            Unrecognized Reseller values — map to an existing company
+            Unrecognized Company values — map to an existing company
           </h2>
           <div className="space-y-2">
             {matched.unresolvedCompanies.map((name) => (
@@ -528,7 +538,9 @@ export function ImportPage() {
               <tr className="border-b border-neutral-200 text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
                 <th className="py-1 pr-3">Username</th>
                 <th className="py-1 pr-3">Name</th>
+                <th className="py-1 pr-3">Company</th>
                 <th className="py-1 pr-3">Service</th>
+                <th className="py-1 pr-3">Owner</th>
                 <th className="py-1 pr-3">Status</th>
                 <th className="py-1 pr-3">Expiry</th>
                 <th className="py-1 pr-3">Type</th>
@@ -539,7 +551,9 @@ export function ImportPage() {
                 <tr key={r.rowIndex} className="border-b border-neutral-100 dark:border-neutral-800">
                   <td className="py-1 pr-3 text-neutral-800 dark:text-neutral-100">{r.externalUsername}</td>
                   <td className="py-1 pr-3 text-neutral-800 dark:text-neutral-100">{r.name}</td>
+                  <td className="py-1 pr-3 text-neutral-600 dark:text-neutral-300">{r.companyName}</td>
                   <td className="py-1 pr-3 text-neutral-600 dark:text-neutral-300">{r.serviceName}</td>
+                  <td className="py-1 pr-3 text-neutral-600 dark:text-neutral-300">{r.ownerName ?? '—'}</td>
                   <td className="py-1 pr-3 text-neutral-600 dark:text-neutral-300">{statusLabel[r.connectionStatus]}</td>
                   <td className="py-1 pr-3 text-neutral-600 dark:text-neutral-300">{r.expiryDate ?? '—'}</td>
                   <td className="py-1 pr-3">
