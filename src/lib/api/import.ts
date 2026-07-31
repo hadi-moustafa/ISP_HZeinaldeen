@@ -108,11 +108,13 @@ export function normalizeRows(rawRows: RawImportRow[]): ParsedRow[] {
       resellerName: String(raw.Reseller ?? '').trim(),
       serviceName: String(raw.Service ?? '').trim(),
       collectorName: blankToNull(raw.Collector),
+      // Subscribers now carry a single address line -- Building no longer has
+      // a column to land in on its own, so it's folded into the address line
+      // rather than dropped outright.
       address:
         blankToNull(raw.Address) || blankToNull(raw.Region) || blankToNull(raw.Building)
           ? {
-              line1: blankToNull(raw.Address),
-              line2: blankToNull(raw.Building),
+              line1: [blankToNull(raw.Address), blankToNull(raw.Building)].filter(Boolean).join(', ') || null,
               region: blankToNull(raw.Region),
             }
           : null,

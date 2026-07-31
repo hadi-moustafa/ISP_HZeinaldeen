@@ -34,6 +34,7 @@ const navSections: { heading: string | null; links: { to: string; label: string;
       { to: '/admin/services', label: 'Services' },
       { to: '/admin/collectors', label: 'Collectors' },
       { to: '/admin/owners', label: 'Owners' },
+      { to: '/admin/regions', label: 'Regions' },
       { to: '/admin/products', label: 'Products' },
       { to: '/admin/import', label: 'Import subscribers' },
       { to: '/admin/company-payments', label: 'Company Payments' },

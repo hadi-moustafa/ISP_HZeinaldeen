@@ -1,10 +1,13 @@
 export type ConnectionStatus = 'active' | 'suspended' | 'cancelled'
+export type Nationality = 'Lebanese' | 'Syrian'
 
 export interface Subscriber {
   id: string
   name: string
   phone: string | null
-  national_id: string | null
+  nationality: Nationality | null
+  address: string | null
+  region_id: string | null
   service_id: string | null
   owner_id: string | null
   default_collector_id: string | null
@@ -22,21 +25,7 @@ export interface SubscriberWithRelations extends Subscriber {
   owners: { name: string } | null
   default_collector: { name: string } | null
   services: { name: string; sell_price: number; companies: { name: string } | null } | null
-  subscriber_addresses: { line1: string | null; city: string | null; is_primary: boolean }[]
-}
-
-export interface SubscriberAddress {
-  id: string
-  subscriber_id: string
-  label: string | null
-  line1: string | null
-  line2: string | null
-  city: string | null
-  region: string | null
-  country: string | null
-  is_primary: boolean
-  created_at: string
-  updated_at: string
+  regions: { name: string } | null
 }
 
 export type DebtFilterMode = 'any' | 'in_debt' | 'paid_up'
@@ -47,12 +36,13 @@ export interface SubscriberFilters {
   collectorId: string
   companyId: string
   serviceId: string
+  regionId: string
   status: ConnectionStatus | ''
   debtMode: DebtFilterMode
   expiryFrom: string
   expiryTo: string
   phone: string
-  nationalId: string
+  nationality: Nationality | ''
   notes: string
   connectionFrom: string
   connectionTo: string
@@ -64,12 +54,13 @@ export const emptyFilters: SubscriberFilters = {
   collectorId: '',
   companyId: '',
   serviceId: '',
+  regionId: '',
   status: '',
   debtMode: 'any',
   expiryFrom: '',
   expiryTo: '',
   phone: '',
-  nationalId: '',
+  nationality: '',
   notes: '',
   connectionFrom: '',
   connectionTo: '',

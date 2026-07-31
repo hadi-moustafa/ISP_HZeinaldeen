@@ -5,20 +5,23 @@ import {
   listSubscribers,
   listDebtSubscriberIds,
   deleteSubscriber,
+  bulkDeleteSubscribers,
+  bulkSetConnectionStatus,
   type SubscriberSearchField,
 } from '../../lib/api/subscribers'
 import { listOwners } from '../../lib/api/owners'
 import { listCollectors } from '../../lib/api/collectors'
 import { listCompanies } from '../../lib/api/companies'
 import { listServices } from '../../lib/api/services'
+import { listRegions } from '../../lib/api/regions'
 import { listMonthlyLog } from '../../lib/api/reports'
-import { createPayment, postponeInvoice, doubleNextMonthInvoice } from '../../lib/api/invoices'
+import { createPayment, postponeInvoice, doubleNextMonthInvoice, createInvoice } from '../../lib/api/invoices'
 import { logActivity } from '../../lib/api/activityLog'
 import { openWhatsApp, paidMessage, postponedMessage, debtMessage } from '../../lib/whatsapp'
 import type { SubscriberWithRelations } from '../../types/subscribers'
 import { emptyFilters } from '../../types/subscribers'
 import type { MonthlyLogRow } from '../../types/reports'
-import type { Owner, Collector, Company, ServiceWithCompany } from '../../types/reference'
+import type { Owner, Collector, Company, ServiceWithCompany, Region } from '../../types/reference'
 import { useStaff } from '../../context/StaffContext'
 import { HeaderActions } from '../../components/AppHeader'
 import { Modal } from '../../components/Modal'
@@ -87,8 +90,8 @@ function formatDateTime(iso: string) {
 // fields on `filters` directly -- this dropdown just controls which single
 // control is visible, replacing the old separate "Adv." panel.
 type FilterField =
-  | 'name' | 'id' | 'owner' | 'username' | 'phone' | 'nationalId' | 'notes'
-  | 'collector' | 'company' | 'service' | 'status' | 'expiry' | 'connection'
+  | 'name' | 'id' | 'owner' | 'username' | 'phone' | 'nationality' | 'notes'
+  | 'collector' | 'company' | 'service' | 'region' | 'status' | 'expiry' | 'connection'
 
 const FILTER_FIELDS: { value: FilterField; label: string }[] = [
   { value: 'name', label: 'Name' },
@@ -96,17 +99,18 @@ const FILTER_FIELDS: { value: FilterField; label: string }[] = [
   { value: 'owner', label: 'Owner' },
   { value: 'username', label: 'Username' },
   { value: 'phone', label: 'Phone' },
-  { value: 'nationalId', label: 'National ID' },
+  { value: 'nationality', label: 'Nationality' },
   { value: 'notes', label: 'Notes' },
   { value: 'collector', label: 'Collector' },
   { value: 'company', label: 'Company' },
   { value: 'service', label: 'Service' },
+  { value: 'region', label: 'Region' },
   { value: 'status', label: 'Connection status' },
   { value: 'expiry', label: 'Expiry date' },
   { value: 'connection', label: 'Connection date' },
 ]
 
-const TEXT_FILTER_FIELDS: FilterField[] = ['name', 'id', 'owner', 'username', 'phone', 'nationalId', 'notes']
+const TEXT_FILTER_FIELDS: FilterField[] = ['name', 'id', 'owner', 'username', 'phone', 'notes']
 
 export function SubscribersListPage() {
   const navigate = useNavigate()
@@ -138,6 +142,7 @@ export function SubscribersListPage() {
   const [collectors, setCollectors] = useState<Collector[]>([])
   const [companies, setCompanies] = useState<Company[]>([])
   const [services, setServices] = useState<ServiceWithCompany[]>([])
+  const [regions, setRegions] = useState<Region[]>([])
   const [debtIds, setDebtIds] = useState<Set<string>>(new Set())
   const [monthlyLogBySubscriber, setMonthlyLogBySubscriber] = useState<Record<string, MonthlyLogRow>>({})
 
@@ -148,12 +153,13 @@ export function SubscribersListPage() {
   }
 
   useEffect(() => {
-    Promise.all([listOwners(), listCollectors(), listCompanies(), listServices(), refreshBillingData()])
-      .then(([o, c, comp, s]) => {
+    Promise.all([listOwners(), listCollectors(), listCompanies(), listServices(), listRegions(), refreshBillingData()])
+      .then(([o, c, comp, s, r]) => {
         setOwners(o)
         setCollectors(c)
         setCompanies(comp)
         setServices(s)
+        setRegions(r)
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load filters'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -247,11 +253,10 @@ export function SubscribersListPage() {
     exportToExcel(
       'subscribers',
       rows.map((s) => {
-        const address = s.subscriber_addresses.find((a) => a.is_primary) ?? s.subscriber_addresses[0]
         return {
           Name: s.name,
           Phone: s.phone ?? '',
-          Address: address ? [address.line1, address.city].filter(Boolean).join(', ') : '',
+          Address: [s.address, s.regions?.name].filter(Boolean).join(', '),
           Service: s.services?.name ?? '',
           Company: s.services?.companies?.name ?? '',
           Owner: s.owners?.name ?? '',
@@ -264,12 +269,35 @@ export function SubscribersListPage() {
     )
   }
 
-  function openPaymentModal(sub: SubscriberWithRelations) {
+  // Pay is always clickable, even with no invoice yet this period (e.g. a
+  // subscriber created between billing runs) -- an invoice is created on the
+  // fly so the button always has something real to act on.
+  async function openPaymentModal(sub: SubscriberWithRelations) {
     setOpenCardMenuId(null)
-    const log = monthlyLogBySubscriber[sub.id]
-    const remaining = log ? Math.max(log.amount_due - log.amount_paid, 0) : 0
     setPaymentError(null)
     setPaymentMode('paid')
+
+    let log: MonthlyLogRow | undefined = monthlyLogBySubscriber[sub.id]
+    if (!log && sub.service_id) {
+      const service = services.find((s) => s.id === sub.service_id)
+      if (service) {
+        try {
+          await createInvoice({
+            subscriber_id: sub.id,
+            service_id: sub.service_id,
+            period_month: currentPeriodMonth(),
+            amount_due: service.sell_price,
+          })
+          const rows = await listMonthlyLog(currentPeriodMonth())
+          setMonthlyLogBySubscriber(Object.fromEntries(rows.map((row) => [row.subscriber_id, row])))
+          log = rows.find((row) => row.subscriber_id === sub.id)
+        } catch (err) {
+          setPaymentError(err instanceof Error ? err.message : 'Failed to create this period\'s invoice')
+        }
+      }
+    }
+
+    const remaining = log ? Math.max(log.amount_due - log.amount_paid, 0) : 0
     setPaymentForm({
       amount: remaining ? String(remaining) : '',
       payment_date: new Date().toISOString().slice(0, 10),
@@ -353,13 +381,43 @@ export function SubscribersListPage() {
 
   async function handleDelete(sub: SubscriberWithRelations) {
     setOpenCardMenuId(null)
-    if (!confirm(`Delete subscriber "${sub.name}"? This also deletes their addresses.`)) return
+    if (!confirm(`Delete subscriber "${sub.name}"?`)) return
     try {
       await deleteSubscriber(sub.id)
       logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} deleted subscriber ${sub.name}`, 'subscriber', sub.id)
       setSubscribers((prev) => prev.filter((s) => s.id !== sub.id))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete subscriber')
+    }
+  }
+
+  async function handleBulkDelete() {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    if (!confirm(`Delete ${ids.length} selected subscriber${ids.length > 1 ? 's' : ''}?`)) return
+    try {
+      await bulkDeleteSubscribers(ids)
+      logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} deleted ${ids.length} subscribers`, 'subscriber')
+      setSubscribers((prev) => prev.filter((s) => !selectedIds.has(s.id)))
+      setSelectedIds(new Set())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete selected subscribers')
+    }
+  }
+
+  async function handleBulkDeactivate() {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    if (!confirm(`Deactivate ${ids.length} selected subscriber${ids.length > 1 ? 's' : ''}?`)) return
+    try {
+      await bulkSetConnectionStatus(ids, 'suspended')
+      logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} deactivated ${ids.length} subscribers`, 'subscriber')
+      setSubscribers((prev) =>
+        prev.map((s) => (selectedIds.has(s.id) ? { ...s, connection_status: 'suspended' } : s)),
+      )
+      setSelectedIds(new Set())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to deactivate selected subscribers')
     }
   }
 
@@ -418,16 +476,13 @@ export function SubscribersListPage() {
                 value={
                   filterField === 'phone'
                     ? filters.phone
-                    : filterField === 'nationalId'
-                      ? filters.nationalId
-                      : filterField === 'notes'
-                        ? filters.notes
-                        : filters.search
+                    : filterField === 'notes'
+                      ? filters.notes
+                      : filters.search
                 }
                 onChange={(e) => {
                   const value = e.target.value
                   if (filterField === 'phone') updateFilter('phone', value)
-                  else if (filterField === 'nationalId') updateFilter('nationalId', value)
                   else if (filterField === 'notes') updateFilter('notes', value)
                   else updateFilter('search', value)
                 }}
@@ -482,6 +537,33 @@ export function SubscribersListPage() {
                   {s.name}
                 </option>
               ))}
+            </select>
+          )}
+
+          {filterField === 'region' && (
+            <select
+              value={filters.regionId}
+              onChange={(e) => updateFilter('regionId', e.target.value)}
+              className="flex-1 rounded-full bg-white px-3 py-2.5 text-sm text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100"
+            >
+              <option value="">Any region</option>
+              {regions.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {filterField === 'nationality' && (
+            <select
+              value={filters.nationality}
+              onChange={(e) => updateFilter('nationality', e.target.value as typeof filters.nationality)}
+              className="flex-1 rounded-full bg-white px-3 py-2.5 text-sm text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100"
+            >
+              <option value="">Any nationality</option>
+              <option value="Lebanese">Lebanese</option>
+              <option value="Syrian">Syrian</option>
             </select>
           )}
 
@@ -594,6 +676,22 @@ export function SubscribersListPage() {
             {selectedIds.size === subscribers.length ? 'Clear' : 'Select all'}
           </button>
         )}
+        {selectedIds.size > 0 && (
+          <>
+            <button
+              onClick={handleBulkDeactivate}
+              className="shrink-0 rounded-full bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-700"
+            >
+              Deactivate
+            </button>
+            <button
+              onClick={handleBulkDelete}
+              className="shrink-0 rounded-full bg-red-100 px-3 py-2 text-xs font-semibold text-red-700"
+            >
+              Delete
+            </button>
+          </>
+        )}
         <div className="ml-auto shrink-0 rounded-full bg-red-100 px-3 py-1.5 text-sm font-bold text-red-700">
           {selectedIds.size > 0 ? `${selectedIds.size} selected` : `Total: ${subscribers.length}`}
         </div>
@@ -608,7 +706,7 @@ export function SubscribersListPage() {
           const billingKey = billingKeyFor(log?.status)
           const style = BILLING_STYLES[billingKey]
           const pct = log && log.amount_due > 0 ? Math.round((log.amount_paid / log.amount_due) * 100) : 0
-          const address = sub.subscriber_addresses.find((a) => a.is_primary) ?? sub.subscriber_addresses[0]
+          const addressLine = [sub.address, sub.regions?.name].filter(Boolean).join(', ')
 
           return (
             <div
@@ -679,9 +777,7 @@ export function SubscribersListPage() {
                   )}
                 </dd>
                 <dt className="text-neutral-400">Address</dt>
-                <dd className="text-neutral-700 dark:text-neutral-300">
-                  {address ? [address.line1, address.city].filter(Boolean).join(', ') || '—' : '—'}
-                </dd>
+                <dd className="text-neutral-700 dark:text-neutral-300">{addressLine || '—'}</dd>
                 <dt className="text-neutral-400">Owner</dt>
                 <dd className="text-neutral-700 dark:text-neutral-300">{sub.owners?.name ?? '—'}</dd>
                 <dt className="text-neutral-400">Service</dt>
@@ -713,9 +809,8 @@ export function SubscribersListPage() {
                 )}
                 <button
                   onClick={() => openPaymentModal(sub)}
-                  disabled={!log}
-                  title={log ? 'Log a payment' : 'No invoice this month'}
-                  className="flex shrink-0 items-center gap-1 rounded-full bg-emerald-500 px-2.5 py-1.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400"
+                  title="Log a payment"
+                  className="flex shrink-0 items-center gap-1 rounded-full bg-emerald-500 px-2.5 py-1.5 text-xs font-semibold text-white"
                 >
                   <Banknote size={13} />
                   Pay

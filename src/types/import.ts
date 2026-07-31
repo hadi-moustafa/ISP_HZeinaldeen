@@ -41,7 +41,7 @@ export interface ParsedRow {
   resellerName: string
   serviceName: string
   collectorName: string | null
-  address: { line1: string | null; line2: string | null; region: string | null } | null
+  address: { line1: string | null; region: string | null } | null
   importMetadata: { password: string | null; switch: string | null; mac_address: string | null; nationality: string | null }
   issues: RowIssue[]
   existingSubscriberId: string | null // set once matched against current DB state
@@ -58,7 +58,7 @@ export interface ImportBatchRow {
   service_id: string
   has_collector: boolean
   default_collector_id: string | null
-  address: { line1: string | null; line2: string | null; region: string | null } | null
+  address: { line1: string | null; region: string | null } | null
   import_metadata: Record<string, unknown>
 }
 

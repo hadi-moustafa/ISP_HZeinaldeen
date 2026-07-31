@@ -11,6 +11,7 @@ import { CompaniesPage } from './pages/admin/CompaniesPage'
 import { ServicesPage } from './pages/admin/ServicesPage'
 import { CollectorsPage } from './pages/admin/CollectorsPage'
 import { OwnersPage } from './pages/admin/OwnersPage'
+import { RegionsPage } from './pages/admin/RegionsPage'
 import { ProductsPage } from './pages/admin/ProductsPage'
 import { ImportPage } from './pages/admin/ImportPage'
 import { CompanyPaymentsPage } from './pages/admin/CompanyPaymentsPage'
@@ -49,6 +50,7 @@ function App() {
             <Route path="services" element={<ServicesPage />} />
             <Route path="collectors" element={<CollectorsPage />} />
             <Route path="owners" element={<OwnersPage />} />
+            <Route path="regions" element={<RegionsPage />} />
             <Route path="products" element={<ProductsPage />} />
             <Route path="import" element={<ImportPage />} />
             <Route path="company-payments" element={<CompanyPaymentsPage />} />

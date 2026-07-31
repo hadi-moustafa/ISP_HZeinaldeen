@@ -9,10 +9,11 @@ import {
 import { listOwners } from '../../lib/api/owners'
 import { listCollectors } from '../../lib/api/collectors'
 import { listServices } from '../../lib/api/services'
+import { listRegions } from '../../lib/api/regions'
 import { createInvoice } from '../../lib/api/invoices'
 import { logActivity } from '../../lib/api/activityLog'
 import { useStaff } from '../../context/StaffContext'
-import type { Owner, Collector, ServiceWithCompany } from '../../types/reference'
+import type { Owner, Collector, ServiceWithCompany, Region } from '../../types/reference'
 import { inputClass, labelClass, primaryButtonClass, secondaryButtonClass } from '../../lib/uiClasses'
 
 function currentPeriodMonth() {
@@ -23,7 +24,9 @@ function currentPeriodMonth() {
 const emptyForm: SubscriberInput = {
   name: '',
   phone: '',
-  national_id: '',
+  nationality: null,
+  address: '',
+  region_id: '',
   service_id: '',
   owner_id: '',
   default_collector_id: '',
@@ -42,17 +45,19 @@ export function SubscriberFormPage() {
   const [owners, setOwners] = useState<Owner[]>([])
   const [collectors, setCollectors] = useState<Collector[]>([])
   const [services, setServices] = useState<ServiceWithCompany[]>([])
+  const [regions, setRegions] = useState<Region[]>([])
   const [form, setForm] = useState<SubscriberInput>(emptyForm)
   const [loading, setLoading] = useState(isEdit)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    Promise.all([listOwners(), listCollectors(), listServices()])
-      .then(([o, c, s]) => {
+    Promise.all([listOwners(), listCollectors(), listServices(), listRegions()])
+      .then(([o, c, s, r]) => {
         setOwners(o)
         setCollectors(c)
         setServices(s)
+        setRegions(r)
         // New subscribers default to collector "hussien" -- client-specified
         // default. Only applies on create; editing an existing subscriber
         // never overwrites their already-set collector.
@@ -72,7 +77,9 @@ export function SubscriberFormPage() {
         setForm({
           name: sub.name,
           phone: sub.phone ?? '',
-          national_id: sub.national_id ?? '',
+          nationality: sub.nationality,
+          address: sub.address ?? '',
+          region_id: sub.region_id ?? '',
           service_id: sub.service_id ?? '',
           owner_id: sub.owner_id ?? '',
           default_collector_id: sub.default_collector_id ?? '',
@@ -97,7 +104,9 @@ export function SubscriberFormPage() {
     const input: SubscriberInput = {
       ...form,
       phone: form.phone || null,
-      national_id: form.national_id || null,
+      nationality: form.nationality || null,
+      address: form.address || null,
+      region_id: form.region_id || null,
       service_id: form.service_id || null,
       owner_id: form.owner_id || null,
       default_collector_id: form.default_collector_id || null,
@@ -168,12 +177,42 @@ export function SubscriberFormPage() {
             />
           </div>
           <div>
-            <label className={labelClass}>National ID</label>
+            <label className={labelClass}>Nationality</label>
+            <select
+              value={form.nationality ?? ''}
+              onChange={(e) => update('nationality', (e.target.value || null) as SubscriberInput['nationality'])}
+              className={inputClass}
+            >
+              <option value="">None</option>
+              <option value="Lebanese">Lebanese</option>
+              <option value="Syrian">Syrian</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={labelClass}>Address</label>
             <input
-              value={form.national_id ?? ''}
-              onChange={(e) => update('national_id', e.target.value)}
+              value={form.address ?? ''}
+              onChange={(e) => update('address', e.target.value)}
               className={inputClass}
             />
+          </div>
+          <div>
+            <label className={labelClass}>Region</label>
+            <select
+              value={form.region_id ?? ''}
+              onChange={(e) => update('region_id', e.target.value)}
+              className={inputClass}
+            >
+              <option value="">None</option>
+              {regions.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 

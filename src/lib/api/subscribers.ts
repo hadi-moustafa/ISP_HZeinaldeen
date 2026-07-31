@@ -1,17 +1,12 @@
 import { supabase } from '../supabase'
-import type {
-  Subscriber,
-  SubscriberAddress,
-  SubscriberFilters,
-  SubscriberWithRelations,
-} from '../../types/subscribers'
+import type { Subscriber, SubscriberFilters, SubscriberWithRelations } from '../../types/subscribers'
 
 const SUBSCRIBER_SELECT = `
   *,
   owners(name),
   default_collector:collectors!default_collector_id(name),
   services(name, sell_price, companies(name)),
-  subscriber_addresses(line1, city, is_primary)
+  regions(name)
 `
 
 export type SubscriberSearchField = 'name' | 'id' | 'owner' | 'username'
@@ -35,6 +30,7 @@ export async function listSubscribers(
 
   if (filters.ownerId) query = query.eq('owner_id', filters.ownerId)
   if (filters.collectorId) query = query.eq('default_collector_id', filters.collectorId)
+  if (filters.regionId) query = query.eq('region_id', filters.regionId)
   if (filters.serviceId) {
     query = query.eq('service_id', filters.serviceId)
   } else if (serviceIdsForCompany) {
@@ -46,8 +42,7 @@ export async function listSubscribers(
   if (filters.connectionFrom) query = query.gte('connection_date', filters.connectionFrom)
   if (filters.connectionTo) query = query.lte('connection_date', filters.connectionTo)
   if (filters.phone.trim()) query = query.ilike('phone', `%${filters.phone.trim().replace(/[%,]/g, '')}%`)
-  if (filters.nationalId.trim())
-    query = query.ilike('national_id', `%${filters.nationalId.trim().replace(/[%,]/g, '')}%`)
+  if (filters.nationality) query = query.eq('nationality', filters.nationality)
   if (filters.notes.trim()) query = query.ilike('notes', `%${filters.notes.trim().replace(/[%,]/g, '')}%`)
 
   if (filters.search.trim() && searchField !== 'id') {
@@ -96,7 +91,9 @@ export async function listDebtSubscriberIds(): Promise<Set<string>> {
 export interface SubscriberInput {
   name: string
   phone: string | null
-  national_id: string | null
+  nationality: Subscriber['nationality']
+  address: string | null
+  region_id: string | null
   service_id: string | null
   owner_id: string | null
   default_collector_id: string | null
@@ -128,48 +125,13 @@ export async function deleteSubscriber(id: string) {
   if (error) throw error
 }
 
-export async function listSubscriberAddresses(subscriberId: string) {
-  const { data, error } = await supabase
-    .from('subscriber_addresses')
-    .select('*')
-    .eq('subscriber_id', subscriberId)
-    .order('is_primary', { ascending: false })
+// Bulk actions for the subscriber list's multiselect.
+export async function bulkDeleteSubscribers(ids: string[]) {
+  const { error } = await supabase.from('subscribers').delete().in('id', ids)
   if (error) throw error
-  return data as SubscriberAddress[]
 }
 
-type AddressInput = {
-  label: string | null
-  line1: string | null
-  line2: string | null
-  city: string | null
-  region: string | null
-  country: string | null
-  is_primary: boolean
-}
-
-export async function createSubscriberAddress(subscriberId: string, input: AddressInput) {
-  const { data, error } = await supabase
-    .from('subscriber_addresses')
-    .insert({ ...input, subscriber_id: subscriberId })
-    .select()
-    .single()
-  if (error) throw error
-  return data as SubscriberAddress
-}
-
-export async function updateSubscriberAddress(id: string, input: AddressInput) {
-  const { data, error } = await supabase
-    .from('subscriber_addresses')
-    .update(input)
-    .eq('id', id)
-    .select()
-    .single()
-  if (error) throw error
-  return data as SubscriberAddress
-}
-
-export async function deleteSubscriberAddress(id: string) {
-  const { error } = await supabase.from('subscriber_addresses').delete().eq('id', id)
+export async function bulkSetConnectionStatus(ids: string[], status: Subscriber['connection_status']) {
+  const { error } = await supabase.from('subscribers').update({ connection_status: status }).in('id', ids)
   if (error) throw error
 }

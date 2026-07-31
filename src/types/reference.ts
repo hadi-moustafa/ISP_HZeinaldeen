@@ -44,6 +44,14 @@ export interface Collector {
   updated_at: string
 }
 
+export interface Region {
+  id: string
+  name: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface Owner {
   id: string
   name: string

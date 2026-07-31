@@ -172,6 +172,16 @@ CREATE TABLE owners (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Admin-managed list of areas/regions, picked from a dropdown on the
+-- subscriber form rather than freely typed (0011_address_region_nationality.sql).
+CREATE TABLE regions (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name        TEXT NOT NULL UNIQUE,
+    is_active   BOOLEAN NOT NULL DEFAULT true,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- ============================================================
 -- SUBSCRIBERS (the ISP's end customers — was "user" in v1)
 -- ============================================================
@@ -179,7 +189,9 @@ CREATE TABLE subscribers (
     id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name                 TEXT NOT NULL,
     phone                TEXT,
-    national_id          TEXT,
+    nationality          TEXT CHECK (nationality IS NULL OR nationality IN ('Lebanese', 'Syrian')),
+    address              TEXT, -- single free-text address line; area/region is the dropdown below
+    region_id            UUID REFERENCES regions(id) ON DELETE SET NULL,
     service_id           UUID REFERENCES services(id) ON DELETE RESTRICT,
     owner_id             UUID REFERENCES owners(id) ON DELETE SET NULL,     -- whose customer this is (one owner -> many subscribers)
     default_collector_id UUID REFERENCES collectors(id) ON DELETE SET NULL, -- usual collector; can be overridden per-payment
@@ -196,26 +208,12 @@ CREATE INDEX idx_subscribers_owner_id ON subscribers(owner_id);
 CREATE INDEX idx_subscribers_default_collector_id ON subscribers(default_collector_id);
 CREATE INDEX idx_subscribers_connection_status ON subscribers(connection_status);
 CREATE INDEX idx_subscribers_expiry_date ON subscribers(expiry_date);
+CREATE INDEX idx_subscribers_region_id ON subscribers(region_id);
 CREATE EXTENSION IF NOT EXISTS pg_trgm; -- enables fast partial-text search on subscriber name/phone
 CREATE INDEX idx_subscribers_name_trgm ON subscribers USING gin (name gin_trgm_ops);
 
 ALTER TABLE product_movements ADD CONSTRAINT fk_product_movements_subscriber
   FOREIGN KEY (subscriber_id) REFERENCES subscribers(id) ON DELETE SET NULL;
-
-CREATE TABLE subscriber_addresses (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    subscriber_id UUID NOT NULL REFERENCES subscribers(id) ON DELETE CASCADE,
-    label       TEXT DEFAULT 'home', -- 'home', 'work', 'installation', etc.
-    line1       TEXT,
-    line2       TEXT,
-    city        TEXT,
-    region      TEXT,
-    country     TEXT,
-    is_primary  BOOLEAN NOT NULL DEFAULT false,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX idx_subscriber_addresses_subscriber_id ON subscriber_addresses(subscriber_id);
 
 -- ============================================================
 -- INVOICES (one row per subscriber per billing month — powers the monthly log)
