@@ -1,21 +1,53 @@
 import * as XLSX from 'xlsx'
 import { supabase } from '../supabase'
-import type { RawImportRow, ParsedRow, ImportBatchRow, ImportLog } from '../../types/import'
+import type {
+  RawImportRow,
+  CanonicalHeader,
+  ColumnMapping,
+  ParsedRow,
+  ImportBatchRow,
+  ImportLog,
+} from '../../types/import'
 import type { Company, Collector, ServiceWithCompany } from '../../types/reference'
 
-// --- Step 1: parse the uploaded file -------------------------------------
+// --- Step 1: read headers + apply a column mapping -------------------------
 
-// The canonical column names this importer understands. sheet_to_json
-// already keys each row by header text rather than column position, so a
-// reordered export already works -- this list exists to tolerate the other
-// way real exports drift: incidental header differences (extra whitespace,
-// different casing, e.g. "user name" vs "Username") without silently
-// dropping that column's data.
-const CANONICAL_HEADERS: (keyof RawImportRow)[] = [
+// The canonical column names this importer understands, and what each feeds.
+// Column position in the file never matters -- sheet_to_json already keys
+// rows by header text -- only the wording does, and even that tolerates
+// incidental drift (casing/whitespace/order) via the normalized lookup
+// below. Anything a file's exporter phrases differently still lands here
+// because the admin gets to fix the mapping before any row data is read.
+export const CANONICAL_HEADERS: CanonicalHeader[] = [
   'Username', 'Name', 'Password', 'Address', 'Mobile', 'Note', 'Reseller',
   'Expiry', 'Service', 'Blocked', 'Switch', 'Date Created', 'Price',
   'Balance', 'Region', 'Building', 'Nationality', 'Mac Address', 'Collector',
 ]
+
+export const CANONICAL_HEADER_LABELS: Record<CanonicalHeader, string> = {
+  Username: 'Username (dedupe key)',
+  Name: 'Subscriber name',
+  Password: 'Password (kept as metadata only)',
+  Address: 'Address line',
+  Mobile: 'Phone',
+  Note: 'Notes',
+  Reseller: 'Company (Reseller)',
+  Expiry: 'Expiry date',
+  Service: 'Service / plan',
+  Blocked: 'Blocked flag (1 = suspended)',
+  Switch: 'Switch (metadata only)',
+  'Date Created': 'Connection date',
+  Price: 'Price (ignored, not used for billing)',
+  Balance: 'Balance (ignored, not used for billing)',
+  Region: 'Region',
+  Building: 'Building (folded into address line)',
+  Nationality: 'Nationality (metadata only)',
+  'Mac Address': 'MAC address (metadata only)',
+  Collector: 'Collector',
+}
+
+// Fields a usable import can't proceed without.
+export const REQUIRED_CANONICAL_HEADERS: CanonicalHeader[] = ['Username', 'Name']
 
 function normalizeHeaderKey(header: string) {
   return header.trim().toLowerCase().replace(/\s+/g, ' ')
@@ -25,30 +57,52 @@ const CANONICAL_BY_NORMALIZED_KEY = new Map(
   CANONICAL_HEADERS.map((h) => [normalizeHeaderKey(h), h]),
 )
 
-export async function parseWorkbookFile(file: File): Promise<RawImportRow[]> {
+export interface WorkbookData {
+  headers: string[] // raw header text, in file order
+  rawRows: Record<string, unknown>[] // each row keyed by that raw header text
+}
+
+export async function readWorkbook(file: File): Promise<WorkbookData> {
   const buffer = await file.arrayBuffer()
   const workbook = XLSX.read(buffer, { type: 'array', cellDates: true })
   const sheet = workbook.Sheets[workbook.SheetNames[0]]
   // defval keeps every declared column present (as '') even when a cell is
   // blank, so downstream code never has to guess between "missing key" and
   // "blank value".
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+  const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
     defval: '',
     raw: false,
     dateNF: 'yyyy-mm-dd',
   })
+  // Read the header row directly (header: 1 -> arrays, not objects) rather
+  // than trusting Object.keys(rawRows[0]) -- the sheet may have zero data
+  // rows, and this still gives every column in its real file order.
+  const headerRow = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, blankrows: false })[0] ?? []
+  const headers = headerRow.map((h) => String(h ?? '').trim()).filter(Boolean)
+  return { headers, rawRows }
+}
 
-  // Remap each row's keys to the canonical header names so a real-world
-  // export with slightly different header casing/spacing (but the same
-  // underlying columns) still lands on the right field, instead of the
-  // column silently reading as blank because the exact key didn't match.
-  return rows.map((row) => {
-    const normalized: Record<string, unknown> = {}
-    for (const [key, value] of Object.entries(row)) {
-      const canonical = CANONICAL_BY_NORMALIZED_KEY.get(normalizeHeaderKey(key)) ?? key
-      normalized[canonical] = value
+// Best-guess mapping: any header whose wording matches a canonical field
+// (ignoring case/whitespace/order) maps to it automatically; anything else
+// starts unmapped ('') for the admin to assign or leave ignored.
+export function defaultColumnMapping(headers: string[]): ColumnMapping {
+  const mapping: ColumnMapping = {}
+  for (const header of headers) {
+    mapping[header] = CANONICAL_BY_NORMALIZED_KEY.get(normalizeHeaderKey(header)) ?? ''
+  }
+  return mapping
+}
+
+// Re-keys every row from its raw file headers onto the canonical fields the
+// rest of the importer expects, per the (admin-confirmed) mapping.
+export function applyColumnMapping(rawRows: Record<string, unknown>[], mapping: ColumnMapping): RawImportRow[] {
+  return rawRows.map((row) => {
+    const mapped: Record<string, unknown> = {}
+    for (const [header, value] of Object.entries(row)) {
+      const canonical = mapping[header]
+      if (canonical) mapped[canonical] = value
     }
-    return normalized as unknown as RawImportRow
+    return mapped as unknown as RawImportRow
   })
 }
 

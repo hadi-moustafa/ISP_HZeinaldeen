@@ -3,16 +3,22 @@ import { useStaff } from '../../context/StaffContext'
 import { createService } from '../../lib/api/services'
 import { logActivity } from '../../lib/api/activityLog'
 import {
-  parseWorkbookFile,
+  readWorkbook,
+  defaultColumnMapping,
+  applyColumnMapping,
   normalizeRows,
   loadImportReferenceData,
   matchRows,
   buildBatchRows,
   importSubscribersBatch,
   listImportLogs,
+  CANONICAL_HEADERS,
+  CANONICAL_HEADER_LABELS,
+  REQUIRED_CANONICAL_HEADERS,
   type ImportReferenceData,
+  type WorkbookData,
 } from '../../lib/api/import'
-import type { ParsedRow, ImportLog } from '../../types/import'
+import type { ParsedRow, ImportLog, ColumnMapping } from '../../types/import'
 import {
   inputClass,
   labelClass,
@@ -21,7 +27,7 @@ import {
   cardClass,
 } from '../../lib/uiClasses'
 
-type Step = 'upload' | 'preview' | 'result'
+type Step = 'upload' | 'columns' | 'preview' | 'result'
 
 const statusLabel: Record<ParsedRow['connectionStatus'], string> = {
   active: 'Active',
@@ -39,6 +45,8 @@ export function ImportPage() {
   const [logs, setLogs] = useState<ImportLog[]>([])
 
   const [filename, setFilename] = useState('')
+  const [workbook, setWorkbook] = useState<WorkbookData | null>(null)
+  const [columnMapping, setColumnMapping] = useState<ColumnMapping>({})
   const [rows, setRows] = useState<ParsedRow[]>([])
   const [ref, setRef] = useState<ImportReferenceData | null>(null)
 
@@ -59,6 +67,8 @@ export function ImportPage() {
   function reset() {
     setStep('upload')
     setFilename('')
+    setWorkbook(null)
+    setColumnMapping({})
     setRows([])
     setRef(null)
     setCompanyResolutions({})
@@ -73,19 +83,51 @@ export function ImportPage() {
     setLoading(true)
     setError(null)
     try {
-      const raw = await parseWorkbookFile(file)
-      const parsed = normalizeRows(raw)
-      const referenceData = await loadImportReferenceData()
-      matchRows(parsed, referenceData)
+      const data = await readWorkbook(file)
+      if (data.headers.length === 0) throw new Error('No columns found in this file')
       setFilename(file.name)
-      setRows(parsed)
-      setRef(referenceData)
-      setStep('preview')
+      setWorkbook(data)
+      setColumnMapping(defaultColumnMapping(data.headers))
+      setStep('columns')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to read the file')
     } finally {
       setLoading(false)
     }
+  }
+
+  const mappedCanonicalHeaders = new Set(Object.values(columnMapping).filter(Boolean))
+  const missingRequiredHeaders = REQUIRED_CANONICAL_HEADERS.filter((h) => !mappedCanonicalHeaders.has(h))
+  const duplicateCanonicalHeaders = CANONICAL_HEADERS.filter(
+    (h) => Object.values(columnMapping).filter((v) => v === h).length > 1,
+  )
+  const canContinueFromColumns = missingRequiredHeaders.length === 0 && duplicateCanonicalHeaders.length === 0
+
+  async function handleConfirmColumns() {
+    if (!workbook) return
+    setLoading(true)
+    setError(null)
+    try {
+      const raw = applyColumnMapping(workbook.rawRows, columnMapping)
+      const parsed = normalizeRows(raw)
+      const referenceData = await loadImportReferenceData()
+      matchRows(parsed, referenceData)
+      setRows(parsed)
+      setRef(referenceData)
+      setStep('preview')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to apply column mapping')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (step === 'upload' || !workbook) {
+    return renderUpload()
+  }
+
+  if (step === 'columns') {
+    return renderColumns()
   }
 
   if (!ref) {
@@ -226,6 +268,80 @@ export function ImportPage() {
             </div>
           </div>
         )}
+      </div>
+    )
+  }
+
+  function renderColumns() {
+    if (!workbook) return null
+    const usedCanonical = new Set(Object.values(columnMapping).filter(Boolean))
+    const unmappedRequired = REQUIRED_CANONICAL_HEADERS.filter((h) => !usedCanonical.has(h))
+
+    return (
+      <div>
+        <h1 className="mb-1 text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+          Match columns · {filename}
+        </h1>
+        <p className="mb-4 text-sm text-neutral-600 dark:text-neutral-300">
+          Column order doesn't matter — only the wording does, and this file's columns were matched
+          automatically where the wording lined up. Check the guesses below and fix anything that
+          isn't right before continuing; nothing is read from the file's row data until you do.
+        </p>
+
+        {error && <p className="mb-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
+
+        {unmappedRequired.length > 0 && (
+          <p className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/40 dark:text-red-200">
+            Still need a column for: {unmappedRequired.map((h) => CANONICAL_HEADER_LABELS[h]).join(', ')}.
+          </p>
+        )}
+        {duplicateCanonicalHeaders.length > 0 && (
+          <p className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/40 dark:text-red-200">
+            More than one column is mapped to the same field:{' '}
+            {duplicateCanonicalHeaders.map((h) => CANONICAL_HEADER_LABELS[h]).join(', ')}. Each field
+            can only come from one column.
+          </p>
+        )}
+
+        <div className="space-y-2">
+          {workbook.headers.map((header) => (
+            <div key={header} className={`${cardClass} flex items-center justify-between gap-3`}>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-neutral-800 dark:text-neutral-100">
+                  {header}
+                </p>
+                <p className="text-xs text-neutral-400">column in your file</p>
+              </div>
+              <select
+                value={columnMapping[header] ?? ''}
+                onChange={(e) =>
+                  setColumnMapping((prev) => ({ ...prev, [header]: e.target.value as ColumnMapping[string] }))
+                }
+                className={`${inputClass} max-w-[220px] shrink-0`}
+              >
+                <option value="">Don't import this column</option>
+                {CANONICAL_HEADERS.map((h) => (
+                  <option key={h} value={h}>
+                    {CANONICAL_HEADER_LABELS[h]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-4 flex gap-2">
+          <button onClick={reset} className={secondaryButtonClass}>
+            Cancel
+          </button>
+          <button
+            onClick={handleConfirmColumns}
+            disabled={!canContinueFromColumns || loading}
+            className={primaryButtonClass}
+          >
+            {loading ? 'Reading rows…' : 'Continue'}
+          </button>
+        </div>
       </div>
     )
   }
@@ -443,6 +559,9 @@ export function ImportPage() {
       <div className="flex gap-2">
         <button onClick={reset} className={secondaryButtonClass}>
           Cancel
+        </button>
+        <button onClick={() => setStep('columns')} className={secondaryButtonClass}>
+          Back to columns
         </button>
         <button onClick={handleConfirm} disabled={!canConfirm || loading} className={primaryButtonClass}>
           {loading ? 'Importing…' : `Confirm import (${validRows.length} rows)`}

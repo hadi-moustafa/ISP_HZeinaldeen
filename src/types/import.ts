@@ -25,6 +25,16 @@ export interface RawImportRow {
   Collector: string
 }
 
+export type CanonicalHeader = keyof RawImportRow
+
+// Maps a raw header exactly as it appears in the uploaded file to the
+// canonical field it feeds -- '' means "don't import this column". Built
+// automatically from a best-guess match (same wording, different casing/
+// spacing/order tolerated) and then editable by the admin before any row
+// data is parsed, so a header this file's exporter phrases differently
+// never just silently reads blank.
+export type ColumnMapping = Record<string, CanonicalHeader | ''>
+
 export type RowIssue =
   | { type: 'missing_username' }
   | { type: 'duplicate_username' }
