@@ -128,6 +128,21 @@ export async function updateSubscriber(id: string, input: SubscriberInput) {
   return data as Subscriber
 }
 
+// Small-scope patch for filling in a subscriber field discovered missing
+// mid-workflow (e.g. adding a phone number from the Pay modal) -- avoids
+// forcing a caller to round-trip the full SubscriberInput just to set one
+// or two fields.
+export async function updateSubscriberFields(id: string, patch: Partial<SubscriberInput>) {
+  const { data, error } = await supabase
+    .from('subscribers')
+    .update(patch)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data as Subscriber
+}
+
 export async function deleteSubscriber(id: string) {
   const { error } = await supabase.from('subscribers').delete().eq('id', id)
   if (error) throw error

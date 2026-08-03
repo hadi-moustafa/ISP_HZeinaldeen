@@ -7,6 +7,7 @@ import {
   deleteSubscriber,
   bulkDeleteSubscribers,
   bulkSetConnectionStatus,
+  updateSubscriberFields,
   type SubscriberSearchField,
 } from '../../lib/api/subscribers'
 import { listOwners } from '../../lib/api/owners'
@@ -133,6 +134,16 @@ export function SubscribersListPage() {
   const [postponeForm, setPostponeForm] = useState({ new_due_date: '', reason: '' })
   const [paymentError, setPaymentError] = useState<string | null>(null)
   const [paymentSaving, setPaymentSaving] = useState(false)
+
+  // Sending the WhatsApp confirmation is an explicit per-action choice, not
+  // an automatic side effect of logging a payment/postpone/debt -- staff can
+  // uncheck it and the underlying DB action still goes through. phoneDraft/
+  // serviceDraft let staff fill in data missing from the subscriber record
+  // (no phone on file, or no service assigned yet, which Debt mode needs)
+  // right here instead of leaving the modal to edit the subscriber first.
+  const [sendWhatsApp, setSendWhatsApp] = useState(true)
+  const [phoneDraft, setPhoneDraft] = useState('')
+  const [serviceDraft, setServiceDraft] = useState('')
 
   const [subscribers, setSubscribers] = useState<SubscriberWithRelations[]>([])
   const [loading, setLoading] = useState(true)
@@ -306,6 +317,9 @@ export function SubscribersListPage() {
       note: '',
     })
     setPostponeForm({ new_due_date: sub.expiry_date ?? '', reason: '' })
+    setSendWhatsApp(true)
+    setPhoneDraft(sub.phone ?? '')
+    setServiceDraft(sub.service_id ?? '')
     setPaymentSub(sub)
   }
 
@@ -314,7 +328,8 @@ export function SubscribersListPage() {
   // stays correct even if this month's invoice was itself already adjusted.
   function debtDoubleAmount(sub: SubscriberWithRelations) {
     const log = monthlyLogBySubscriber[sub.id]
-    const base = sub.services?.sell_price ?? log?.amount_due ?? 0
+    const base =
+      sub.services?.sell_price ?? services.find((s) => s.id === sub.service_id)?.sell_price ?? log?.amount_due ?? 0
     return base * 2
   }
 
@@ -325,10 +340,28 @@ export function SubscribersListPage() {
     setPaymentSaving(true)
     setPaymentError(null)
     try {
+      // Fill in whatever was missing and typed into the modal before acting
+      // on it -- phone for the WhatsApp send, service for the Debt amount --
+      // so the subscriber record itself gets fixed, not just this one action.
+      let sub = paymentSub
+      const patch: { phone?: string | null; service_id?: string; company_id?: string | null } = {}
+      const trimmedPhone = phoneDraft.trim()
+      if (trimmedPhone !== (sub.phone ?? '')) patch.phone = trimmedPhone || null
+      if (paymentMode === 'debt' && !sub.service_id && serviceDraft) {
+        const chosen = services.find((s) => s.id === serviceDraft)
+        patch.service_id = serviceDraft
+        patch.company_id = chosen?.comp_id ?? null
+      }
+      if (Object.keys(patch).length > 0) {
+        const updated = await updateSubscriberFields(sub.id, patch)
+        sub = { ...sub, ...updated }
+        setPaymentSub(sub)
+        setSubscribers((prev) => prev.map((s) => (s.id === sub.id ? { ...s, ...updated } : s)))
+      }
       if (paymentMode === 'paid') {
         await createPayment({
           invoice_id: log?.invoice_id ?? null,
-          subscriber_id: paymentSub.id,
+          subscriber_id: sub.id,
           collector_id: paymentForm.collector_id || null,
           amount: Number(paymentForm.amount),
           payment_date: paymentForm.payment_date,
@@ -338,37 +371,32 @@ export function SubscribersListPage() {
         })
         logActivity(
           staff?.id ?? null,
-          `${staff?.username ?? 'Someone'} logged a payment of ${paymentForm.amount} for subscriber ${paymentSub.name}`,
+          `${staff?.username ?? 'Someone'} logged a payment of ${paymentForm.amount} for subscriber ${sub.name}`,
           'payment',
-          paymentSub.id,
+          sub.id,
         )
-        openWhatsApp(paymentSub.phone, paidMessage(paymentSub.name))
+        if (sendWhatsApp) openWhatsApp(sub.phone, paidMessage(sub.name))
       } else if (paymentMode === 'postponed') {
         if (!log?.invoice_id) throw new Error('No invoice this period to postpone')
         await postponeInvoice(log.invoice_id, postponeForm.new_due_date, postponeForm.reason || null, staff?.id ?? null)
         logActivity(
           staff?.id ?? null,
-          `${staff?.username ?? 'Someone'} postponed the invoice for subscriber ${paymentSub.name} to ${postponeForm.new_due_date}`,
+          `${staff?.username ?? 'Someone'} postponed the invoice for subscriber ${sub.name} to ${postponeForm.new_due_date}`,
           'invoice',
           log.invoice_id,
         )
-        openWhatsApp(paymentSub.phone, postponedMessage(paymentSub.name, postponeForm.new_due_date))
+        if (sendWhatsApp) openWhatsApp(sub.phone, postponedMessage(sub.name, postponeForm.new_due_date))
       } else {
-        if (!paymentSub.service_id) throw new Error('Subscriber has no service to base the debt amount on')
-        const doubled = debtDoubleAmount(paymentSub)
-        await doubleNextMonthInvoice(
-          paymentSub.id,
-          paymentSub.service_id,
-          nextPeriodMonth(currentPeriodMonth()),
-          doubled,
-        )
+        if (!sub.service_id) throw new Error('Subscriber has no service to base the debt amount on -- pick one above')
+        const doubled = debtDoubleAmount(sub)
+        await doubleNextMonthInvoice(sub.id, sub.service_id, nextPeriodMonth(currentPeriodMonth()), doubled)
         logActivity(
           staff?.id ?? null,
-          `${staff?.username ?? 'Someone'} marked subscriber ${paymentSub.name} as in debt -- next month's payment doubled to ${doubled}`,
+          `${staff?.username ?? 'Someone'} marked subscriber ${sub.name} as in debt -- next month's payment doubled to ${doubled}`,
           'subscriber',
-          paymentSub.id,
+          sub.id,
         )
-        openWhatsApp(paymentSub.phone, debtMessage(paymentSub.name, doubled))
+        if (sendWhatsApp) openWhatsApp(sub.phone, debtMessage(sub.name, doubled))
       }
       setPaymentSub(null)
       await refreshBillingData()
@@ -856,8 +884,9 @@ export function SubscribersListPage() {
           {paymentMode === 'paid' && (
             <>
               <p className="mb-4 text-xs text-neutral-500">
-                Logs the payment, turns this subscriber green, pushes their expiry a month forward,
-                and opens WhatsApp with an Arabic confirmation to send them.
+                Logs the payment, turns this subscriber green, and pushes their expiry a month
+                forward so next month is what gets collected next. WhatsApp confirmation is
+                optional below.
               </p>
               <label className={labelClass}>Amount</label>
               <input
@@ -910,8 +939,8 @@ export function SubscribersListPage() {
           {paymentMode === 'postponed' && (
             <>
               <p className="mb-4 text-xs text-neutral-500">
-                Moves this subscriber's expiry to the new date, turns them orange, and opens
-                WhatsApp with an Arabic message telling them the new due date.
+                Moves this subscriber's expiry to the new date and turns them orange. WhatsApp
+                message is optional below.
               </p>
               <label className={labelClass}>New due date</label>
               <input
@@ -932,21 +961,71 @@ export function SubscribersListPage() {
 
           {paymentMode === 'debt' && (
             <>
-              <p className="mb-4 text-xs text-neutral-500">
-                Turns this subscriber red and sets next month's payment to double
-                {paymentSub ? ` (${debtDoubleAmount(paymentSub)})` : ''} as a late-payment penalty.
-                It reverts to the normal amount automatically once that doubled invoice is paid.
-                Opens WhatsApp with an Arabic message telling them they're in debt.
-              </p>
+              {paymentSub && !paymentSub.service_id ? (
+                <>
+                  <p className="mb-3 text-xs text-amber-600">
+                    This subscriber has no service assigned yet, so there's no rate to double.
+                    Pick one to use for the debt penalty (saved to the subscriber).
+                  </p>
+                  <label className={labelClass}>Service</label>
+                  <select
+                    value={serviceDraft}
+                    onChange={(e) => setServiceDraft(e.target.value)}
+                    className={`${inputClass} mb-4`}
+                    required
+                  >
+                    <option value="">Select a service…</option>
+                    {services.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.companies?.name ?? 'no company'})
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : (
+                <p className="mb-4 text-xs text-neutral-500">
+                  Turns this subscriber red and sets next month's payment to double
+                  {paymentSub ? ` (${debtDoubleAmount(paymentSub)})` : ''} as a late-payment
+                  penalty. It reverts to the normal amount automatically once that doubled
+                  invoice is paid. WhatsApp message is optional below.
+                </p>
+              )}
             </>
           )}
+
+          <div className="mb-4 rounded-xl bg-neutral-50 p-3 dark:bg-neutral-900">
+            {!paymentSub?.phone && (
+              <>
+                <label className={labelClass}>
+                  Phone number (missing — add it to enable WhatsApp)
+                </label>
+                <input
+                  type="tel"
+                  value={phoneDraft}
+                  onChange={(e) => setPhoneDraft(e.target.value)}
+                  placeholder="e.g. 03123456"
+                  className={`${inputClass} mb-3`}
+                />
+              </>
+            )}
+            <label className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-200">
+              <input
+                type="checkbox"
+                checked={sendWhatsApp}
+                onChange={(e) => setSendWhatsApp(e.target.checked)}
+                disabled={!phoneDraft.trim() && !paymentSub?.phone}
+                className="h-4 w-4 rounded border-neutral-300 text-indigo-600"
+              />
+              Send WhatsApp confirmation to the subscriber
+            </label>
+          </div>
 
           <div className="flex justify-end gap-2">
             <button type="button" onClick={() => setPaymentSub(null)} className={secondaryButtonClass}>
               Cancel
             </button>
             <button type="submit" disabled={paymentSaving} className={primaryButtonClass}>
-              {paymentSaving ? 'Saving…' : 'Save & Notify'}
+              {paymentSaving ? 'Saving…' : sendWhatsApp ? 'Save & Notify' : 'Save'}
             </button>
           </div>
         </form>

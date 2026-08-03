@@ -9,6 +9,7 @@ import type { Invoice, PaymentWithCollector } from '../../types/invoices'
 import type { Collector } from '../../types/reference'
 import { useStaff } from '../../context/StaffContext'
 import { logActivity } from '../../lib/api/activityLog'
+import { updateSubscriberFields } from '../../lib/api/subscribers'
 import { openWhatsApp } from '../../lib/whatsapp'
 import { Modal } from '../Modal'
 import {
@@ -61,6 +62,13 @@ export function InvoicesSection({
 
   const [postponeModalInvoice, setPostponeModalInvoice] = useState<Invoice | null>(null)
   const [postponeForm, setPostponeForm] = useState({ new_due_date: '', reason: '' })
+
+  // Sharing a receipt over WhatsApp needs a phone number on file -- if one's
+  // missing, prompt for it right here instead of sending the staff member
+  // off to the edit form first.
+  const [phonePromptInvoice, setPhonePromptInvoice] = useState<Invoice | null>(null)
+  const [phoneDraft, setPhoneDraft] = useState('')
+  const [savingPhone, setSavingPhone] = useState(false)
 
   async function refresh() {
     setLoading(true)
@@ -166,10 +174,35 @@ export function InvoicesSection({
   }
 
   function shareViaWhatsApp(invoice: Invoice) {
+    if (!subscriberPhone) {
+      setPhoneDraft('')
+      setPhonePromptInvoice(invoice)
+      return
+    }
     const receiptUrl = `${window.location.origin}/receipt/${invoice.id}`
     const message = `Hi ${subscriberName}, here's your receipt for ${invoice.period_month}: ${receiptUrl}`
-    if (!openWhatsApp(subscriberPhone, message)) {
-      setError('Subscriber has no phone number on file')
+    openWhatsApp(subscriberPhone, message)
+  }
+
+  async function submitPhoneAndShare(e: FormEvent) {
+    e.preventDefault()
+    if (!phonePromptInvoice) return
+    setSavingPhone(true)
+    setError(null)
+    try {
+      const phone = phoneDraft.trim()
+      await updateSubscriberFields(subscriberId, { phone: phone || null })
+      onChanged?.()
+      if (phone) {
+        const receiptUrl = `${window.location.origin}/receipt/${phonePromptInvoice.id}`
+        const message = `Hi ${subscriberName}, here's your receipt for ${phonePromptInvoice.period_month}: ${receiptUrl}`
+        openWhatsApp(phone, message)
+      }
+      setPhonePromptInvoice(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save phone number')
+    } finally {
+      setSavingPhone(false)
     }
   }
 
@@ -349,6 +382,40 @@ export function InvoicesSection({
             </button>
             <button type="submit" className={primaryButtonClass}>
               Save
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        open={Boolean(phonePromptInvoice)}
+        onClose={() => setPhonePromptInvoice(null)}
+        title="Add phone number to share via WhatsApp"
+      >
+        <form onSubmit={submitPhoneAndShare}>
+          <p className="mb-4 text-xs text-neutral-500 dark:text-neutral-400">
+            This subscriber has no phone number on file. Add one to send them this receipt --
+            it's saved to their record for next time too.
+          </p>
+          <label className={labelClass}>Phone number</label>
+          <input
+            type="tel"
+            value={phoneDraft}
+            onChange={(e) => setPhoneDraft(e.target.value)}
+            placeholder="e.g. 03123456"
+            className={`${inputClass} mb-4`}
+            required
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setPhonePromptInvoice(null)}
+              className={secondaryButtonClass}
+            >
+              Cancel
+            </button>
+            <button type="submit" disabled={savingPhone} className={primaryButtonClass}>
+              {savingPhone ? 'Saving…' : 'Save & share'}
             </button>
           </div>
         </form>
