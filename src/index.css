@@ -12,4 +12,10 @@
 
 body {
   margin: 0;
+  /* Belt-and-suspenders: any single row of content that overflows its
+     container (e.g. a wrapping button group on a narrow phone) shouldn't be
+     able to widen the whole page and shift it sideways -- confirmed live as
+     the cause of the subscriber list "tilting left" when the bulk-action
+     buttons appeared after multi-select. */
+  overflow-x: hidden;
 }

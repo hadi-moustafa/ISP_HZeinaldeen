@@ -30,3 +30,22 @@ export async function createCompanyPayment(input: CompanyPaymentInput) {
   if (error) throw error
   return data as CompanyPayment
 }
+
+export async function updateCompanyPayment(
+  id: string,
+  input: Pick<CompanyPaymentInput, 'amount' | 'payment_date' | 'note'>,
+) {
+  const { data, error } = await supabase
+    .from('company_payments')
+    .update(input)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data as CompanyPayment
+}
+
+export async function deleteCompanyPayment(id: string) {
+  const { error } = await supabase.from('company_payments').delete().eq('id', id)
+  if (error) throw error
+}

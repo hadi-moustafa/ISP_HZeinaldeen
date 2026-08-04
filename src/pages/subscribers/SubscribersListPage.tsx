@@ -671,7 +671,7 @@ export function SubscribersListPage() {
         )}
       </div>
 
-      <div className="mb-4 flex items-center gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <button
           onClick={() => updateFilter('debtMode', 'any')}
           className={`shrink-0 rounded-full px-3 py-2 text-sm font-medium shadow-sm ${
@@ -844,9 +844,9 @@ export function SubscribersListPage() {
                 <button
                   onClick={() => openPaymentModal(sub)}
                   title="Log a payment"
-                  className="flex shrink-0 items-center gap-1 rounded-full bg-emerald-500 px-2.5 py-1.5 text-xs font-semibold text-white"
+                  className="flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-500 px-3.5 py-2 text-sm font-semibold text-white"
                 >
-                  <Banknote size={13} />
+                  <Banknote size={16} />
                   Pay
                 </button>
               </div>

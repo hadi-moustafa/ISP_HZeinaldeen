@@ -3,6 +3,8 @@ import {
   listCompanyDues,
   listCompanyPayments,
   createCompanyPayment,
+  updateCompanyPayment,
+  deleteCompanyPayment,
 } from '../../lib/api/companyPayments'
 import { logActivity } from '../../lib/api/activityLog'
 import { useStaff } from '../../context/StaffContext'
@@ -21,6 +23,13 @@ export function CompanyPaymentsPage() {
 
   const [payingCompany, setPayingCompany] = useState<CompanyDue | null>(null)
   const [form, setForm] = useState({
+    amount: '',
+    payment_date: new Date().toISOString().slice(0, 10),
+    note: '',
+  })
+
+  const [editingPayment, setEditingPayment] = useState<CompanyPayment | null>(null)
+  const [editForm, setEditForm] = useState({
     amount: '',
     payment_date: new Date().toISOString().slice(0, 10),
     note: '',
@@ -93,6 +102,57 @@ export function CompanyPaymentsPage() {
     }
   }
 
+  function openEditModal(payment: CompanyPayment) {
+    setEditingPayment(payment)
+    setEditForm({
+      amount: String(payment.amount),
+      payment_date: payment.payment_date,
+      note: payment.note ?? '',
+    })
+  }
+
+  async function submitEdit(e: FormEvent) {
+    e.preventDefault()
+    if (!editingPayment) return
+    try {
+      await updateCompanyPayment(editingPayment.id, {
+        amount: Number(editForm.amount),
+        payment_date: editForm.payment_date,
+        note: editForm.note || null,
+      })
+      logActivity(
+        staff?.id ?? null,
+        `${staff?.username ?? 'Someone'} edited a company payment (now ${editForm.amount})`,
+        'company_payment',
+        editingPayment.comp_id,
+      )
+      setEditingPayment(null)
+      await refresh()
+      const rows = await listCompanyPayments(editingPayment.comp_id)
+      setPayments((prev) => ({ ...prev, [editingPayment.comp_id]: rows }))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update payment')
+    }
+  }
+
+  async function handleDeletePayment(payment: CompanyPayment) {
+    if (!confirm(`Delete this payment of ${payment.amount}?`)) return
+    try {
+      await deleteCompanyPayment(payment.id)
+      logActivity(
+        staff?.id ?? null,
+        `${staff?.username ?? 'Someone'} deleted a company payment of ${payment.amount}`,
+        'company_payment',
+        payment.comp_id,
+      )
+      await refresh()
+      const rows = await listCompanyPayments(payment.comp_id)
+      setPayments((prev) => ({ ...prev, [payment.comp_id]: rows }))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete payment')
+    }
+  }
+
   return (
     <div>
       <h1 className="mb-1 text-lg font-semibold text-neutral-900">Company payments</h1>
@@ -134,11 +194,27 @@ export function CompanyPaymentsPage() {
               {expandedId === due.comp_id && (
                 <div className="mt-3 space-y-2 border-t border-neutral-200 pt-3">
                   {(payments[due.comp_id] ?? []).map((p) => (
-                    <div key={p.id} className="rounded-md bg-neutral-50 p-2 text-sm">
-                      <p className="text-neutral-800">
-                        {p.amount} on {p.payment_date}
-                      </p>
-                      {p.note && <p className="text-neutral-500">{p.note}</p>}
+                    <div key={p.id} className="flex items-start justify-between gap-2 rounded-md bg-neutral-50 p-2 text-sm">
+                      <div className="min-w-0">
+                        <p className="text-neutral-800">
+                          {p.amount} on {p.payment_date}
+                        </p>
+                        {p.note && <p className="text-neutral-500">{p.note}</p>}
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        <button
+                          onClick={() => openEditModal(p)}
+                          className="text-xs font-medium text-blue-600"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeletePayment(p)}
+                          className="text-xs font-medium text-red-600"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   ))}
                   {(payments[due.comp_id] ?? []).length === 0 && (
@@ -184,6 +260,47 @@ export function CompanyPaymentsPage() {
           />
           <div className="flex justify-end gap-2">
             <button type="button" onClick={() => setPayingCompany(null)} className={secondaryButtonClass}>
+              Cancel
+            </button>
+            <button type="submit" className={primaryButtonClass}>
+              Save
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        open={Boolean(editingPayment)}
+        onClose={() => setEditingPayment(null)}
+        title="Edit payment"
+      >
+        <form onSubmit={submitEdit}>
+          <label className={labelClass}>Amount</label>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={editForm.amount}
+            onChange={(e) => setEditForm((f) => ({ ...f, amount: e.target.value }))}
+            className={`${inputClass} mb-4`}
+            required
+          />
+          <label className={labelClass}>Payment date</label>
+          <input
+            type="date"
+            value={editForm.payment_date}
+            onChange={(e) => setEditForm((f) => ({ ...f, payment_date: e.target.value }))}
+            className={`${inputClass} mb-4`}
+            required
+          />
+          <label className={labelClass}>Note</label>
+          <input
+            value={editForm.note}
+            onChange={(e) => setEditForm((f) => ({ ...f, note: e.target.value }))}
+            className={`${inputClass} mb-4`}
+          />
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setEditingPayment(null)} className={secondaryButtonClass}>
               Cancel
             </button>
             <button type="submit" className={primaryButtonClass}>
