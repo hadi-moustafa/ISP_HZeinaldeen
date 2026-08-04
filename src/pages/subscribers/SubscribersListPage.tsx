@@ -281,34 +281,20 @@ export function SubscribersListPage() {
   }
 
   // Pay is always clickable, even with no invoice yet this period (e.g. a
-  // subscriber created between billing runs) -- an invoice is created on the
-  // fly so the button always has something real to act on.
-  async function openPaymentModal(sub: SubscriberWithRelations) {
+  // subscriber created between billing runs) -- but nothing is written to
+  // the DB just from opening this modal. An invoice only gets created (if
+  // one's missing) at actual submit time, inside submitPayment -- otherwise
+  // opening the modal and backing out without confirming anything would
+  // leave behind a real unpaid invoice and turn the subscriber red/in-debt
+  // for an action that never happened.
+  function openPaymentModal(sub: SubscriberWithRelations) {
     setOpenCardMenuId(null)
     setPaymentError(null)
     setPaymentMode('paid')
 
-    let log: MonthlyLogRow | undefined = monthlyLogBySubscriber[sub.id]
-    if (!log && sub.service_id) {
-      const service = services.find((s) => s.id === sub.service_id)
-      if (service) {
-        try {
-          await createInvoice({
-            subscriber_id: sub.id,
-            service_id: sub.service_id,
-            period_month: currentPeriodMonth(),
-            amount_due: service.sell_price,
-          })
-          const rows = await listMonthlyLog(currentPeriodMonth())
-          setMonthlyLogBySubscriber(Object.fromEntries(rows.map((row) => [row.subscriber_id, row])))
-          log = rows.find((row) => row.subscriber_id === sub.id)
-        } catch (err) {
-          setPaymentError(err instanceof Error ? err.message : 'Failed to create this period\'s invoice')
-        }
-      }
-    }
-
-    const remaining = log ? Math.max(log.amount_due - log.amount_paid, 0) : 0
+    const log = monthlyLogBySubscriber[sub.id]
+    const service = sub.service_id ? services.find((s) => s.id === sub.service_id) : undefined
+    const remaining = log ? Math.max(log.amount_due - log.amount_paid, 0) : (service?.sell_price ?? 0)
     setPaymentForm({
       amount: remaining ? String(remaining) : '',
       payment_date: new Date().toISOString().slice(0, 10),
@@ -336,7 +322,6 @@ export function SubscribersListPage() {
   async function submitPayment(e: FormEvent) {
     e.preventDefault()
     if (!paymentSub) return
-    const log = monthlyLogBySubscriber[paymentSub.id]
     setPaymentSaving(true)
     setPaymentError(null)
     try {
@@ -358,6 +343,27 @@ export function SubscribersListPage() {
         setPaymentSub(sub)
         setSubscribers((prev) => prev.map((s) => (s.id === sub.id ? { ...s, ...updated } : s)))
       }
+
+      // The current period's invoice is only ever created here, at the
+      // moment an action is actually being committed -- never just from
+      // opening the modal -- so backing out without confirming anything
+      // never leaves behind a real invoice or turns the subscriber red.
+      let log: MonthlyLogRow | undefined = monthlyLogBySubscriber[sub.id]
+      if (!log && (paymentMode === 'paid' || paymentMode === 'postponed') && sub.service_id) {
+        const service = services.find((s) => s.id === sub.service_id)
+        if (service) {
+          await createInvoice({
+            subscriber_id: sub.id,
+            service_id: sub.service_id,
+            period_month: currentPeriodMonth(),
+            amount_due: service.sell_price,
+          })
+          const rows = await listMonthlyLog(currentPeriodMonth())
+          setMonthlyLogBySubscriber(Object.fromEntries(rows.map((row) => [row.subscriber_id, row])))
+          log = rows.find((row) => row.subscriber_id === sub.id)
+        }
+      }
+
       if (paymentMode === 'paid') {
         await createPayment({
           invoice_id: log?.invoice_id ?? null,
