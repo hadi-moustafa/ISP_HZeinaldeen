@@ -37,6 +37,7 @@ const navSections: { heading: string | null; links: { to: string; label: string;
       { to: '/admin/regions', label: 'Regions' },
       { to: '/admin/products', label: 'Products' },
       { to: '/admin/import', label: 'Import subscribers' },
+      { to: '/admin/missing-data', label: 'Missing data' },
       { to: '/admin/company-payments', label: 'Company Payments' },
       { to: '/admin/activity-log', label: 'Activity Log' },
     ],

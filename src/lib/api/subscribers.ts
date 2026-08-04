@@ -66,6 +66,20 @@ export async function listSubscribers(
   return data as unknown as SubscriberWithRelations[]
 }
 
+// Subscribers missing at least one commonly-blank field from the Excel
+// import (phone, address, region, nationality, building) -- surfaced so an
+// admin can walk down the list and fill gaps in real data rather than
+// hunting for them one profile at a time.
+export async function listSubscribersWithMissingData() {
+  const { data, error } = await supabase
+    .from('subscribers')
+    .select(SUBSCRIBER_SELECT)
+    .or('phone.is.null,address.is.null,region_id.is.null,nationality.is.null,building.is.null')
+    .order('name')
+  if (error) throw error
+  return data as unknown as SubscriberWithRelations[]
+}
+
 export async function getSubscriber(id: string) {
   const { data, error } = await supabase
     .from('subscribers')

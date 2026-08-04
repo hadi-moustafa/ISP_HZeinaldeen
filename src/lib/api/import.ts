@@ -18,9 +18,11 @@ import type { Company, Collector, ServiceWithCompany } from '../../types/referen
 // incidental drift (casing/whitespace/order) via the normalized lookup
 // below. Anything a file's exporter phrases differently still lands here
 // because the admin gets to fix the mapping before any row data is read.
+// Company is deliberately absent here -- it's no longer a column in the
+// file, it's the sheet's own tab title (see companyNameFromSheet below).
 export const CANONICAL_HEADERS: CanonicalHeader[] = [
   'Username', 'Name', 'Password', 'Address', 'Mobile', 'Note', 'Reseller',
-  'Expiry', 'Service', 'Company', 'Blocked', 'Switch', 'Date Created',
+  'Expiry', 'Service', 'Blocked', 'Switch', 'Date Created',
   'Price', 'Balance', 'Region', 'Building', 'Nationality', 'Mac Address',
   'Collector',
 ]
@@ -35,7 +37,6 @@ export const CANONICAL_HEADER_LABELS: Record<CanonicalHeader, string> = {
   Reseller: 'Owner (Reseller)',
   Expiry: 'Expiry date',
   Service: 'Service / plan',
-  Company: 'Company (network operator)',
   Blocked: 'Blocked flag (1 = suspended)',
   Switch: 'Switch',
   'Date Created': 'Connection date',
@@ -48,8 +49,9 @@ export const CANONICAL_HEADER_LABELS: Record<CanonicalHeader, string> = {
   Collector: 'Collector',
 }
 
-// Fields a usable import can't proceed without.
-export const REQUIRED_CANONICAL_HEADERS: CanonicalHeader[] = ['Username', 'Name', 'Company']
+// Fields a usable import can't proceed without. Company isn't here -- it
+// comes from the sheet's tab title, not a column.
+export const REQUIRED_CANONICAL_HEADERS: CanonicalHeader[] = ['Username', 'Name']
 
 function normalizeHeaderKey(header: string) {
   return header.trim().toLowerCase().replace(/\s+/g, ' ')
@@ -62,12 +64,14 @@ const CANONICAL_BY_NORMALIZED_KEY = new Map(
 export interface WorkbookData {
   headers: string[] // raw header text, in file order
   rawRows: Record<string, unknown>[] // each row keyed by that raw header text
+  sheetName: string // the sheet's own tab title -- doubles as the company name for every row
 }
 
 export async function readWorkbook(file: File): Promise<WorkbookData> {
   const buffer = await file.arrayBuffer()
   const workbook = XLSX.read(buffer, { type: 'array', cellDates: true })
-  const sheet = workbook.Sheets[workbook.SheetNames[0]]
+  const sheetName = workbook.SheetNames[0] ?? ''
+  const sheet = workbook.Sheets[sheetName]
   // defval keeps every declared column present (as '') even when a cell is
   // blank, so downstream code never has to guess between "missing key" and
   // "blank value".
@@ -81,7 +85,7 @@ export async function readWorkbook(file: File): Promise<WorkbookData> {
   // rows, and this still gives every column in its real file order.
   const headerRow = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, blankrows: false })[0] ?? []
   const headers = headerRow.map((h) => String(h ?? '').trim()).filter(Boolean)
-  return { headers, rawRows }
+  return { headers, rawRows, sheetName: sheetName.trim() }
 }
 
 // Best-guess mapping: any header whose wording matches a canonical field
@@ -162,7 +166,8 @@ function normalizeNationality(value: unknown): 'Lebanese' | 'Syrian' | null {
 
 // --- Step 2: normalize raw rows into the app's shape ----------------------
 
-export function normalizeRows(rawRows: RawImportRow[]): ParsedRow[] {
+export function normalizeRows(rawRows: RawImportRow[], companyName: string): ParsedRow[] {
+  const trimmedCompanyName = companyName.trim()
   const seenUsernames = new Map<string, number>() // username -> first rowIndex seen
   const rows: ParsedRow[] = rawRows.map((raw, i) => {
     const rowIndex = i + 2 // header is row 1 in the source file
@@ -179,7 +184,7 @@ export function normalizeRows(rawRows: RawImportRow[]): ParsedRow[] {
       expiryDate: parseExcelDate(raw.Expiry),
       connectionDate: parseExcelDate(raw['Date Created']),
       ownerName: blankToNull(raw.Reseller),
-      companyName: String(raw.Company ?? '').trim(),
+      companyName: trimmedCompanyName,
       serviceName: String(raw.Service ?? '').trim(),
       collectorName: blankToNull(raw.Collector),
       address:

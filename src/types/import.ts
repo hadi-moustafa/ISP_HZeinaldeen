@@ -7,6 +7,11 @@ import type { ConnectionStatus, Nationality } from './subscribers'
 // network operator) are deliberately separate fields -- Company also
 // disambiguates which Service row to use when a service name exists under
 // more than one company.
+//
+// Company is NOT a column here (client removed it from the export): every
+// row in a sheet belongs to one company, named by the sheet's own tab title
+// (e.g. a sheet titled "Nova" means every row is Nova). See
+// `companyNameFromSheet` in lib/api/import.ts.
 export interface RawImportRow {
   Username: string
   Name: string
@@ -17,7 +22,6 @@ export interface RawImportRow {
   Reseller: string
   Expiry: string | Date
   Service: string
-  Company: string
   Blocked: string | number
   Switch: string
   'Date Created': string | Date
@@ -43,6 +47,8 @@ export type ColumnMapping = Record<string, CanonicalHeader | ''>
 export type RowIssue =
   | { type: 'missing_username' }
   | { type: 'duplicate_username' }
+  // Fires on every row at once, not per-row -- the sheet's own tab title
+  // has to be non-blank since it's the only source of the company name now.
   | { type: 'missing_company' }
 
 export interface ParsedRow {
@@ -55,7 +61,7 @@ export interface ParsedRow {
   expiryDate: string | null // YYYY-MM-DD
   connectionDate: string | null // YYYY-MM-DD
   ownerName: string | null // from Reseller
-  companyName: string // from Company -- also disambiguates Service matches
+  companyName: string // from the sheet's tab title -- also disambiguates Service matches
   serviceName: string
   collectorName: string | null
   address: { line1: string | null; region: string | null } | null

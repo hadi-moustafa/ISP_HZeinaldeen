@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useStaff } from '../../context/StaffContext'
 import { createService } from '../../lib/api/services'
 import { logActivity } from '../../lib/api/activityLog'
@@ -101,7 +102,9 @@ export function ImportPage() {
   const duplicateCanonicalHeaders = CANONICAL_HEADERS.filter(
     (h) => Object.values(columnMapping).filter((v) => v === h).length > 1,
   )
-  const canContinueFromColumns = missingRequiredHeaders.length === 0 && duplicateCanonicalHeaders.length === 0
+  const sheetNameBlank = !workbook?.sheetName
+  const canContinueFromColumns =
+    missingRequiredHeaders.length === 0 && duplicateCanonicalHeaders.length === 0 && !sheetNameBlank
 
   async function handleConfirmColumns() {
     if (!workbook) return
@@ -109,7 +112,7 @@ export function ImportPage() {
     setError(null)
     try {
       const raw = applyColumnMapping(workbook.rawRows, columnMapping)
-      const parsed = normalizeRows(raw)
+      const parsed = normalizeRows(raw, workbook.sheetName)
       const referenceData = await loadImportReferenceData()
       matchRows(parsed, referenceData)
       setRows(parsed)
@@ -243,7 +246,8 @@ export function ImportPage() {
           <p className="mb-4 text-sm text-neutral-600 dark:text-neutral-300">
             Upload the subscriber export from the ISP panel (.xlsx). This is a one-way import: new
             usernames create subscribers, existing usernames update them. Nothing is written until you
-            confirm the preview.
+            confirm the preview. The company for every row comes from the Excel sheet's own tab
+            title, not a column — make sure the sheet is named after the company (e.g. "Nova").
           </p>
           {error && <p className="mb-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
           <input
@@ -299,6 +303,19 @@ export function ImportPage() {
         </p>
 
         {error && <p className="mb-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
+
+        {sheetNameBlank ? (
+          <p className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/40 dark:text-red-200">
+            This file's sheet has no tab title. Every row's company comes from the sheet's own tab
+            name (e.g. a sheet titled "Nova" imports everyone as Nova) — rename the sheet tab in
+            Excel and re-upload.
+          </p>
+        ) : (
+          <p className="mb-4 rounded-md bg-blue-50 p-3 text-sm text-blue-800 dark:bg-blue-900/40 dark:text-blue-200">
+            Company for this import: <strong>{workbook.sheetName}</strong> (from the sheet's tab
+            title) — every row will be assigned to this company.
+          </p>
+        )}
 
         {unmappedRequired.length > 0 && (
           <p className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/40 dark:text-red-200">
@@ -370,9 +387,14 @@ export function ImportPage() {
           </p>
           <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">from {filename}</p>
         </div>
-        <button onClick={reset} className={primaryButtonClass}>
-          Import another file
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={reset} className={primaryButtonClass}>
+            Import another file
+          </button>
+          <Link to="/admin/missing-data" className={secondaryButtonClass}>
+            Review subscribers with missing data
+          </Link>
+        </div>
       </div>
     )
   }
@@ -411,7 +433,7 @@ export function ImportPage() {
       {matched.unresolvedCompanies.length > 0 && (
         <div className="mb-4">
           <h2 className="mb-2 text-sm font-semibold text-neutral-700 dark:text-neutral-300">
-            Unrecognized Company values — map to an existing company
+            This file's company (from its sheet title) doesn't match an existing company — map it
           </h2>
           <div className="space-y-2">
             {matched.unresolvedCompanies.map((name) => (
