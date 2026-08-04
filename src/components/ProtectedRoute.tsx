@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useStaff } from '../context/StaffContext'
-import { isAdmin } from '../lib/permissions'
+import { isAdmin, isCollector } from '../lib/permissions'
 
 export function ProtectedRoute({
   children,
@@ -21,6 +21,13 @@ export function ProtectedRoute({
 
   if (adminOnly && !isAdmin(staff)) {
     return <Navigate to="/" replace />
+  }
+
+  // Collectors only get the Subscribers page and its functionality --
+  // checked here, once, so it applies to every route (dashboard, admin,
+  // reports, field) without each one needing its own guard.
+  if (isCollector(staff) && !location.pathname.startsWith('/subscribers')) {
+    return <Navigate to="/subscribers" replace />
   }
 
   return <>{children}</>

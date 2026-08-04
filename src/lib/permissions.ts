@@ -12,3 +12,12 @@ export function canAccess(staff: CurrentStaff | null, _permission: string): bool
 export function isAdmin(staff: CurrentStaff | null): boolean {
   return staff?.role === 'admin'
 }
+
+// Collectors are restricted to the Subscribers page and its functionality
+// (list, view, edit, pay) -- explicit client instruction, unlike the
+// deliberately-unrestricted canAccess() above. Enforced centrally in
+// ProtectedRoute so it applies to every route without each page needing to
+// check it.
+export function isCollector(staff: CurrentStaff | null): boolean {
+  return staff?.role === 'collector'
+}

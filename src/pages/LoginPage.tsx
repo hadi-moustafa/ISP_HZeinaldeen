@@ -11,7 +11,8 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false)
 
   if (staff) {
-    const from = (location.state as { from?: string })?.from ?? '/'
+    const defaultLanding = staff.role === 'collector' ? '/subscribers' : '/'
+    const from = (location.state as { from?: string })?.from ?? defaultLanding
     return <Navigate to={from} replace />
   }
 
