@@ -759,7 +759,7 @@ export function SubscribersListPage() {
                     title="Expiry date"
                     className="rounded-md bg-neutral-100 px-2 py-1 text-xs font-medium text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300"
                   >
-                    Exp: {sub.expiry_date ?? '—'}
+                    Exp: {sub.expiry_date ? new Date(sub.expiry_date).getUTCDate() : '—'}
                   </span>
                   <div className="relative">
                     <button
