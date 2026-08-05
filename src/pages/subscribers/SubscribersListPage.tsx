@@ -822,6 +822,8 @@ export function SubscribersListPage() {
                 <dd className="text-neutral-700 dark:text-neutral-300">
                   {sub.default_collector?.name ?? '—'}
                 </dd>
+                <dt className="text-neutral-400">Expiry</dt>
+                <dd className="text-neutral-700 dark:text-neutral-300">{sub.expiry_date ?? '—'}</dd>
               </dl>
 
               <div className="flex items-center gap-2">
