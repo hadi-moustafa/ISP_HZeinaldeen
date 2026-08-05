@@ -1,7 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { listServices, createService, updateService, deleteService } from '../../lib/api/services'
+import {
+  listServicesWithSubscriberCount,
+  createService,
+  updateService,
+  deleteService,
+} from '../../lib/api/services'
 import { listCompanies } from '../../lib/api/companies'
-import type { Company, ServiceWithCompany } from '../../types/reference'
+import type { Company, ServiceWithStats } from '../../types/reference'
 import { Modal } from '../../components/Modal'
 import { logActivity } from '../../lib/api/activityLog'
 import { useStaff } from '../../context/StaffContext'
@@ -24,20 +29,20 @@ const emptyForm = {
 
 export function ServicesPage() {
   const { staff } = useStaff()
-  const [services, setServices] = useState<ServiceWithCompany[]>([])
+  const [services, setServices] = useState<ServiceWithStats[]>([])
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const [modalOpen, setModalOpen] = useState(false)
-  const [editing, setEditing] = useState<ServiceWithCompany | null>(null)
+  const [editing, setEditing] = useState<ServiceWithStats | null>(null)
   const [form, setForm] = useState(emptyForm)
 
   async function refresh() {
     setLoading(true)
     setError(null)
     try {
-      const [svc, comp] = await Promise.all([listServices(), listCompanies()])
+      const [svc, comp] = await Promise.all([listServicesWithSubscriberCount(), listCompanies()])
       setServices(svc)
       setCompanies(comp)
     } catch (err) {
@@ -57,7 +62,7 @@ export function ServicesPage() {
     setModalOpen(true)
   }
 
-  function openEdit(service: ServiceWithCompany) {
+  function openEdit(service: ServiceWithStats) {
     setEditing(service)
     setForm({
       comp_id: service.comp_id,
@@ -93,7 +98,7 @@ export function ServicesPage() {
     }
   }
 
-  async function remove(service: ServiceWithCompany) {
+  async function remove(service: ServiceWithStats) {
     if (!confirm(`Delete service "${service.name}"? This fails if subscribers use it.`)) return
     try {
       await deleteService(service.id)
@@ -145,6 +150,9 @@ export function ServicesPage() {
                 </p>
                 <p className="text-sm text-neutral-600 dark:text-neutral-300">
                   Sell {service.sell_price} · Pay {service.paid_price}
+                </p>
+                <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                  {service.subscriber_count} subscriber{service.subscriber_count === 1 ? '' : 's'}
                 </p>
               </div>
               <div className="flex gap-2">

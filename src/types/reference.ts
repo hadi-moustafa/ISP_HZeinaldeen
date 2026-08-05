@@ -27,6 +27,10 @@ export interface ServiceWithCompany extends Service {
   companies: { name: string } | null
 }
 
+export interface ServiceWithStats extends ServiceWithCompany {
+  subscriber_count: number
+}
+
 export interface Collector {
   id: string
   name: string
