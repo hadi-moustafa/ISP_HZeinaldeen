@@ -29,22 +29,33 @@ export interface DashboardSummary {
   totalDebtSubscribers: number
 }
 
-// Collected/left figures are for the current billing month, matching the
-// monthly_log semantics used everywhere else in the app (subscriber list,
-// monthly log page) rather than an all-time total. totalDebtSubscribers
-// reuses listDebtSubscriberIds() (any unpaid/partial invoice, any period)
-// so "in debt" means the same thing here as it does on the subscriber
-// list's Debt filter chip -- not scoped to the current month like the
-// other figures.
+// totalDue is the total sell price across every active subscriber with a
+// service assigned -- what should be collected this month if everyone
+// paid -- not the sum of invoices actually generated so far (a
+// mid-month-created subscriber with no invoice yet still counts). Matches
+// invoice generation's own active-only, has-a-service scoping elsewhere in
+// the app. totalPaid still comes from monthly_log (this month's actual
+// collections). totalDebtSubscribers reuses listDebtSubscriberIds() (any
+// unpaid/partial invoice, any period) so "in debt" means the same thing
+// here as it does on the subscriber list's Debt filter chip.
 export async function getDashboardSummary(periodMonth: string): Promise<DashboardSummary> {
-  const [countRes, logRows, debtIds] = await Promise.all([
+  const [countRes, expectedRes, logRows, debtIds] = await Promise.all([
     supabase.from('subscribers').select('id', { count: 'exact', head: true }),
+    supabase
+      .from('subscribers')
+      .select('services(sell_price)')
+      .eq('connection_status', 'active')
+      .not('service_id', 'is', null),
     listMonthlyLog(periodMonth),
     listDebtSubscriberIds(),
   ])
   if (countRes.error) throw countRes.error
+  if (expectedRes.error) throw expectedRes.error
 
-  const totalDue = logRows.reduce((sum, r) => sum + r.amount_due, 0)
+  const totalDue = (expectedRes.data as unknown as { services: { sell_price: number } | null }[]).reduce(
+    (sum, r) => sum + (r.services?.sell_price ?? 0),
+    0,
+  )
   const totalPaid = logRows.reduce((sum, r) => sum + r.amount_paid, 0)
 
   return {
