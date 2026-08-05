@@ -15,6 +15,18 @@ const statusBadgeClass: Record<string, string> = {
   cancelled: 'bg-neutral-200 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300',
 }
 
+// created_at is a real timestamptz (not a date-only value), so local
+// getters here are just for a readable "day it happened" display, not
+// working around the date-only/toISOString timezone gotcha documented
+// elsewhere in this codebase.
+function formatCreatedDate(iso: string) {
+  const d = new Date(iso)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 export function SubscriberDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -118,9 +130,9 @@ export function SubscriberDetailPage() {
             </dd>
           </div>
           <div>
-            <dt className="text-neutral-500 dark:text-neutral-400">Expiry day</dt>
+            <dt className="text-neutral-500 dark:text-neutral-400">Created</dt>
             <dd className="text-neutral-900 dark:text-neutral-100">
-              {subscriber.expiry_date ? new Date(subscriber.expiry_date).getUTCDate() : '—'}
+              {formatCreatedDate(subscriber.created_at)}
             </dd>
           </div>
           <div>
