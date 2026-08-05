@@ -1,4 +1,5 @@
 import { supabase } from '../supabase'
+import { listDebtSubscriberIds } from './subscribers'
 import type { MonthlyFinancialRow, MonthlyLogRow } from '../../types/reports'
 
 export async function listMonthlyLog(periodMonth: string) {
@@ -25,15 +26,21 @@ export interface DashboardSummary {
   totalDue: number
   totalPaid: number
   totalLeft: number
+  totalDebtSubscribers: number
 }
 
 // Collected/left figures are for the current billing month, matching the
 // monthly_log semantics used everywhere else in the app (subscriber list,
-// monthly log page) rather than an all-time total.
+// monthly log page) rather than an all-time total. totalDebtSubscribers
+// reuses listDebtSubscriberIds() (any unpaid/partial invoice, any period)
+// so "in debt" means the same thing here as it does on the subscriber
+// list's Debt filter chip -- not scoped to the current month like the
+// other figures.
 export async function getDashboardSummary(periodMonth: string): Promise<DashboardSummary> {
-  const [countRes, logRows] = await Promise.all([
+  const [countRes, logRows, debtIds] = await Promise.all([
     supabase.from('subscribers').select('id', { count: 'exact', head: true }),
     listMonthlyLog(periodMonth),
+    listDebtSubscriberIds(),
   ])
   if (countRes.error) throw countRes.error
 
@@ -45,5 +52,6 @@ export async function getDashboardSummary(periodMonth: string): Promise<Dashboar
     totalDue,
     totalPaid,
     totalLeft: Math.max(totalDue - totalPaid, 0),
+    totalDebtSubscribers: debtIds.size,
   }
 }

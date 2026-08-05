@@ -130,12 +130,12 @@ export function SubscribersListPage() {
   const [paymentSaving, setPaymentSaving] = useState(false)
 
   // Sending the WhatsApp confirmation is an explicit per-action choice, not
-  // an automatic side effect of logging a payment/postpone/debt -- staff can
-  // uncheck it and the underlying DB action still goes through. phoneDraft/
-  // serviceDraft let staff fill in data missing from the subscriber record
-  // (no phone on file, or no service assigned yet, which Debt mode needs)
-  // right here instead of leaving the modal to edit the subscriber first.
-  const [sendWhatsApp, setSendWhatsApp] = useState(true)
+  // an automatic side effect of logging a payment/postpone/debt -- two
+  // separate submit buttons (Save / Save & Notify) below decide it, rather
+  // than a checkbox. phoneDraft/serviceDraft let staff fill in data missing
+  // from the subscriber record (no phone on file, or no service assigned
+  // yet, which Debt mode needs) right here instead of leaving the modal to
+  // edit the subscriber first.
   const [phoneDraft, setPhoneDraft] = useState('')
   const [serviceDraft, setServiceDraft] = useState('')
 
@@ -297,7 +297,6 @@ export function SubscribersListPage() {
       note: '',
     })
     setPostponeForm({ new_due_date: sub.expiry_date ?? '', reason: '' })
-    setSendWhatsApp(true)
     setPhoneDraft(sub.phone ?? '')
     setServiceDraft(sub.service_id ?? '')
     setPaymentSub(sub)
@@ -313,9 +312,14 @@ export function SubscribersListPage() {
     return base * 2
   }
 
-  async function submitPayment(e: FormEvent) {
+  async function submitPayment(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!paymentSub) return
+    // Which of the two submit buttons (Save / Save & Notify) triggered this
+    // -- both are type="submit" so HTML5 required-field validation still
+    // runs no matter which one is clicked, but only "Save & Notify" should
+    // open WhatsApp afterward.
+    const notify = (e.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'notify'
     setPaymentSaving(true)
     setPaymentError(null)
     try {
@@ -375,7 +379,7 @@ export function SubscribersListPage() {
           'payment',
           sub.id,
         )
-        if (sendWhatsApp) openWhatsApp(sub.phone, paidMessage(sub.name))
+        if (notify) openWhatsApp(sub.phone, paidMessage(sub.name))
       } else if (paymentMode === 'postponed') {
         if (!log?.invoice_id) throw new Error('No invoice this period to postpone')
         await postponeInvoice(log.invoice_id, postponeForm.new_due_date, postponeForm.reason || null, staff?.id ?? null)
@@ -385,7 +389,7 @@ export function SubscribersListPage() {
           'invoice',
           log.invoice_id,
         )
-        if (sendWhatsApp) openWhatsApp(sub.phone, postponedMessage(sub.name, postponeForm.new_due_date))
+        if (notify) openWhatsApp(sub.phone, postponedMessage(sub.name, postponeForm.new_due_date))
       } else {
         if (!sub.service_id) throw new Error('Subscriber has no service to base the debt amount on -- pick one above')
         const doubled = debtDoubleAmount(sub)
@@ -396,7 +400,7 @@ export function SubscribersListPage() {
           'subscriber',
           sub.id,
         )
-        if (sendWhatsApp) openWhatsApp(sub.phone, debtMessage(sub.name, doubled))
+        if (notify) openWhatsApp(sub.phone, debtMessage(sub.name, doubled))
       }
       setPaymentSub(null)
       await refreshBillingData()
@@ -885,8 +889,8 @@ export function SubscribersListPage() {
             <>
               <p className="mb-4 text-xs text-neutral-500">
                 Logs the payment, turns this subscriber green, and pushes their expiry a month
-                forward so next month is what gets collected next. WhatsApp confirmation is
-                optional below.
+                forward so next month is what gets collected next. Use "Save & Notify" below
+                to also send a WhatsApp confirmation.
               </p>
               <label className={labelClass}>Amount</label>
               <input
@@ -939,8 +943,8 @@ export function SubscribersListPage() {
           {paymentMode === 'postponed' && (
             <>
               <p className="mb-4 text-xs text-neutral-500">
-                Moves this subscriber's expiry to the new date and turns them orange. WhatsApp
-                message is optional below.
+                Moves this subscriber's expiry to the new date and turns them orange. Use
+                "Save & Notify" below to also send a WhatsApp message.
               </p>
               <label className={labelClass}>New due date</label>
               <input
@@ -987,45 +991,48 @@ export function SubscribersListPage() {
                   Turns this subscriber red and sets next month's payment to double
                   {paymentSub ? ` (${debtDoubleAmount(paymentSub)})` : ''} as a late-payment
                   penalty. It reverts to the normal amount automatically once that doubled
-                  invoice is paid. WhatsApp message is optional below.
+                  invoice is paid. Use "Save & Notify" below to also send a WhatsApp message.
                 </p>
               )}
             </>
           )}
 
-          <div className="mb-4 rounded-xl bg-neutral-50 p-3 dark:bg-neutral-900">
-            {!paymentSub?.phone && (
-              <>
-                <label className={labelClass}>
-                  Phone number (missing — add it to enable WhatsApp)
-                </label>
-                <input
-                  type="tel"
-                  value={phoneDraft}
-                  onChange={(e) => setPhoneDraft(e.target.value)}
-                  placeholder="e.g. 03123456"
-                  className={`${inputClass} mb-3`}
-                />
-              </>
-            )}
-            <label className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-200">
+          {!paymentSub?.phone && (
+            <div className="mb-4 rounded-xl bg-neutral-50 p-3 dark:bg-neutral-900">
+              <label className={labelClass}>
+                Phone number (missing — add it to enable "Save & Notify")
+              </label>
               <input
-                type="checkbox"
-                checked={sendWhatsApp}
-                onChange={(e) => setSendWhatsApp(e.target.checked)}
-                disabled={!phoneDraft.trim() && !paymentSub?.phone}
-                className="h-4 w-4 rounded border-neutral-300 text-indigo-600"
+                type="tel"
+                value={phoneDraft}
+                onChange={(e) => setPhoneDraft(e.target.value)}
+                placeholder="e.g. 03123456"
+                className={inputClass}
               />
-              Send WhatsApp confirmation to the subscriber
-            </label>
-          </div>
+            </div>
+          )}
 
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <button type="button" onClick={() => setPaymentSub(null)} className={secondaryButtonClass}>
               Cancel
             </button>
-            <button type="submit" disabled={paymentSaving} className={primaryButtonClass}>
-              {paymentSaving ? 'Saving…' : sendWhatsApp ? 'Save & Notify' : 'Save'}
+            <button
+              type="submit"
+              name="intent"
+              value="save"
+              disabled={paymentSaving}
+              className={secondaryButtonClass}
+            >
+              {paymentSaving ? 'Saving…' : 'Save'}
+            </button>
+            <button
+              type="submit"
+              name="intent"
+              value="notify"
+              disabled={paymentSaving || (!phoneDraft.trim() && !paymentSub?.phone)}
+              className={primaryButtonClass}
+            >
+              {paymentSaving ? 'Saving…' : 'Save & Notify'}
             </button>
           </div>
         </form>

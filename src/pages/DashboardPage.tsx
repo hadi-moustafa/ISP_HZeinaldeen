@@ -78,7 +78,7 @@ export function DashboardPage() {
                   <div className="flex items-center gap-3 text-sm">
                     <span className="flex items-center gap-1.5 text-neutral-600">
                       <span className="h-2.5 w-2.5 rounded-full bg-rose-500" />
-                      Outstanding {summary.totalLeft.toFixed(2)}
+                      Amount still to be collected {summary.totalLeft.toFixed(2)}
                     </span>
                   </div>
                 </div>
@@ -92,6 +92,10 @@ export function DashboardPage() {
                 <div className={cardClass}>
                   <p className="text-2xl font-bold text-emerald-600">{summary.totalPaid.toFixed(2)}</p>
                   <p className="text-xs text-neutral-500">Collected this month</p>
+                </div>
+                <div className={`${cardClass} col-span-2`}>
+                  <p className="text-2xl font-bold text-black">{summary.totalDebtSubscribers}</p>
+                  <p className="text-xs text-neutral-500">Subscribers in debt</p>
                 </div>
               </div>
             </>
