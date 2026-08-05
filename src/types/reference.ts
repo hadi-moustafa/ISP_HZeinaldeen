@@ -2,22 +2,14 @@ export interface Company {
   id: string
   name: string
   notes: string | null
+  payment_phone: string | null
+  support_phone: string | null
   created_at: string
   updated_at: string
 }
 
-export interface CompanyAddress {
-  id: string
-  comp_id: string
-  label: string | null
-  line1: string | null
-  line2: string | null
-  city: string | null
-  region: string | null
-  country: string | null
-  is_primary: boolean
-  created_at: string
-  updated_at: string
+export interface CompanyWithStats extends Company {
+  subscriber_count: number
 }
 
 export interface Service {
