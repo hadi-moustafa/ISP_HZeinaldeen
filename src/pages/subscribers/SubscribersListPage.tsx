@@ -750,9 +750,6 @@ export function SubscribersListPage() {
                     aria-label={`Select ${sub.name}`}
                     className="h-4 w-4 rounded border-neutral-300 text-indigo-600"
                   />
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${style.pill}`}>
-                    #{sub.id.slice(0, 8)}
-                  </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span
@@ -809,8 +806,8 @@ export function SubscribersListPage() {
                 </dd>
                 <dt className="text-neutral-400">Address</dt>
                 <dd className="text-neutral-700 dark:text-neutral-300">{addressLine || '—'}</dd>
-                <dt className="text-neutral-400">Owner</dt>
-                <dd className="text-neutral-700 dark:text-neutral-300">{sub.owners?.name ?? '—'}</dd>
+                <dt className="text-neutral-400">Company</dt>
+                <dd className="text-neutral-700 dark:text-neutral-300">{sub.company?.name ?? '—'}</dd>
                 <dt className="text-neutral-400">Service</dt>
                 <dd className="font-medium text-neutral-800 dark:text-neutral-100">
                   {sub.services?.name ?? '—'}
