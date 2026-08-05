@@ -78,12 +78,6 @@ function nextPeriodMonth(period: string) {
   return `${nextY}-${String(nextM).padStart(2, '0')}-01`
 }
 
-function formatDateTime(iso: string) {
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
 // Superset of the API's SubscriberSearchField: the free-text modes (name/id/
 // owner/username) map straight through to the API's search+searchField
 // mechanism; the rest (phone/nationalId/notes/collector/company/service/
@@ -761,8 +755,11 @@ export function SubscribersListPage() {
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="rounded-md bg-neutral-100 px-2 py-1 text-xs text-neutral-500 dark:bg-neutral-700 dark:text-neutral-400">
-                    {formatDateTime(sub.updated_at)}
+                  <span
+                    title="Expiry date"
+                    className="rounded-md bg-neutral-100 px-2 py-1 text-xs font-medium text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300"
+                  >
+                    Exp: {sub.expiry_date ?? '—'}
                   </span>
                   <div className="relative">
                     <button
@@ -822,8 +819,6 @@ export function SubscribersListPage() {
                 <dd className="text-neutral-700 dark:text-neutral-300">
                   {sub.default_collector?.name ?? '—'}
                 </dd>
-                <dt className="text-neutral-400">Expiry</dt>
-                <dd className="text-neutral-700 dark:text-neutral-300">{sub.expiry_date ?? '—'}</dd>
               </dl>
 
               <div className="flex items-center gap-2">
