@@ -138,6 +138,9 @@ export function SubscribersListPage() {
   // edit the subscriber first.
   const [phoneDraft, setPhoneDraft] = useState('')
   const [serviceDraft, setServiceDraft] = useState('')
+  // How much more the current invoice can take -- never lets a logged
+  // payment push the total paid past what's actually owed.
+  const [paymentRemaining, setPaymentRemaining] = useState(0)
 
   const [subscribers, setSubscribers] = useState<SubscriberWithRelations[]>([])
   const [loading, setLoading] = useState(true)
@@ -289,6 +292,7 @@ export function SubscribersListPage() {
     const log = monthlyLogBySubscriber[sub.id]
     const service = sub.service_id ? services.find((s) => s.id === sub.service_id) : undefined
     const remaining = log ? Math.max(log.amount_due - log.amount_paid, 0) : (service?.sell_price ?? 0)
+    setPaymentRemaining(remaining)
     setPaymentForm({
       amount: remaining ? String(remaining) : '',
       payment_date: new Date().toISOString().slice(0, 10),
@@ -363,6 +367,9 @@ export function SubscribersListPage() {
       }
 
       if (paymentMode === 'paid') {
+        if (Number(paymentForm.amount) > paymentRemaining) {
+          throw new Error(`Amount can't exceed what's left on this invoice (${paymentRemaining.toFixed(2)}).`)
+        }
         await createPayment({
           invoice_id: log?.invoice_id ?? null,
           subscriber_id: sub.id,
@@ -754,6 +761,11 @@ export function SubscribersListPage() {
                     aria-label={`Select ${sub.name}`}
                     className="h-4 w-4 rounded border-neutral-300 text-indigo-600"
                   />
+                  {sub.external_username && (
+                    <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                      {sub.external_username}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <span
@@ -842,7 +854,9 @@ export function SubscribersListPage() {
                 <button
                   onClick={() => openPaymentModal(sub)}
                   title="Log a payment"
-                  className="flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-500 px-3.5 py-2 text-sm font-semibold text-white"
+                  className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold text-white ${
+                    billingKey === 'paid' ? 'bg-emerald-500' : 'bg-neutral-400'
+                  }`}
                 >
                   <Banknote size={16} />
                   Pay
@@ -892,11 +906,12 @@ export function SubscribersListPage() {
                 forward so next month is what gets collected next. Use "Save & Notify" below
                 to also send a WhatsApp confirmation.
               </p>
-              <label className={labelClass}>Amount</label>
+              <label className={labelClass}>Amount (max {paymentRemaining.toFixed(2)})</label>
               <input
                 type="number"
                 step="0.01"
                 min="0"
+                max={paymentRemaining}
                 value={paymentForm.amount}
                 onChange={(e) => setPaymentForm((f) => ({ ...f, amount: e.target.value }))}
                 className={`${inputClass} mb-4`}

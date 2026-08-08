@@ -15,6 +15,7 @@ import { RegionsPage } from './pages/admin/RegionsPage'
 import { ProductsPage } from './pages/admin/ProductsPage'
 import { ImportPage } from './pages/admin/ImportPage'
 import { MissingDataPage } from './pages/admin/MissingDataPage'
+import { DuplicateSubscribersPage } from './pages/admin/DuplicateSubscribersPage'
 import { CompanyPaymentsPage } from './pages/admin/CompanyPaymentsPage'
 import { ActivityLogPage } from './pages/admin/ActivityLogPage'
 import { SubscribersListPage } from './pages/subscribers/SubscribersListPage'
@@ -55,6 +56,7 @@ function App() {
             <Route path="products" element={<ProductsPage />} />
             <Route path="import" element={<ImportPage />} />
             <Route path="missing-data" element={<MissingDataPage />} />
+            <Route path="duplicates" element={<DuplicateSubscribersPage />} />
             <Route path="company-payments" element={<CompanyPaymentsPage />} />
             <Route path="activity-log" element={<ActivityLogPage />} />
           </Route>

@@ -80,6 +80,48 @@ export async function listSubscribersWithMissingData() {
   return data as unknown as SubscriberWithRelations[]
 }
 
+export interface DuplicateSubscriberGroup {
+  matchType: 'username' | 'name'
+  matchValue: string
+  subscribers: SubscriberWithRelations[]
+}
+
+// Groups subscribers that share a normalized (trimmed/lowercased) username
+// or name -- surfaced so an admin can spot likely duplicate entries (double
+// import, same person re-added, a typo'd re-signup) rather than only
+// finding them by accident. A subscriber pair matching on both username
+// and name will show up in both a username group and a name group -- that
+// duplication is intentional, it's a stronger signal, not a bug.
+export async function listDuplicateSubscribers(): Promise<DuplicateSubscriberGroup[]> {
+  const { data, error } = await supabase.from('subscribers').select(SUBSCRIBER_SELECT).order('name')
+  if (error) throw error
+  const subs = data as unknown as SubscriberWithRelations[]
+
+  function groupBy(keyFn: (s: SubscriberWithRelations) => string | null): Map<string, SubscriberWithRelations[]> {
+    const map = new Map<string, SubscriberWithRelations[]>()
+    for (const s of subs) {
+      const key = keyFn(s)
+      if (!key) continue
+      const list = map.get(key) ?? []
+      list.push(s)
+      map.set(key, list)
+    }
+    return map
+  }
+
+  const byUsername = groupBy((s) => (s.external_username ? s.external_username.trim().toLowerCase() : null))
+  const byName = groupBy((s) => (s.name ? s.name.trim().toLowerCase() : null))
+
+  const groups: DuplicateSubscriberGroup[] = []
+  for (const [value, list] of byUsername) {
+    if (list.length > 1) groups.push({ matchType: 'username', matchValue: value, subscribers: list })
+  }
+  for (const [value, list] of byName) {
+    if (list.length > 1) groups.push({ matchType: 'name', matchValue: value, subscribers: list })
+  }
+  return groups
+}
+
 export async function getSubscriber(id: string) {
   const { data, error } = await supabase
     .from('subscribers')

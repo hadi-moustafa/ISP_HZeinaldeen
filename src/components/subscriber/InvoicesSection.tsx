@@ -3,6 +3,8 @@ import {
   listInvoicesForSubscriber,
   listPaymentsForInvoice,
   createPayment,
+  updatePayment,
+  deletePayment,
   postponeInvoice,
 } from '../../lib/api/invoices'
 import type { Invoice, PaymentWithCollector } from '../../types/invoices'
@@ -59,6 +61,20 @@ export function InvoicesSection({
     collector_id: '',
     note: '',
   })
+  // How much more this invoice can take -- amount_due minus whatever's
+  // already been paid on it -- so a payment can never push the total paid
+  // past what's actually owed, even across several partial payments.
+  const [paymentRemaining, setPaymentRemaining] = useState(0)
+
+  const [editingPayment, setEditingPayment] = useState<PaymentWithCollector | null>(null)
+  const [editForm, setEditForm] = useState({
+    amount: '',
+    payment_date: '',
+    method: '',
+    collector_id: '',
+    note: '',
+  })
+  const [editRemaining, setEditRemaining] = useState(0)
 
   const [postponeModalInvoice, setPostponeModalInvoice] = useState<Invoice | null>(null)
   const [postponeForm, setPostponeForm] = useState({ new_due_date: '', reason: '' })
@@ -103,10 +119,16 @@ export function InvoicesSection({
     }
   }
 
-  function openPaymentModal(invoice: Invoice) {
+  async function openPaymentModal(invoice: Invoice) {
+    setError(null)
+    const rows = payments[invoice.id] ?? (await listPaymentsForInvoice(invoice.id))
+    setPayments((prev) => ({ ...prev, [invoice.id]: rows }))
+    const alreadyPaid = rows.reduce((sum, p) => sum + p.amount, 0)
+    const remaining = Math.max(invoice.amount_due - alreadyPaid, 0)
+    setPaymentRemaining(remaining)
     setPaymentModalInvoice(invoice)
     setPaymentForm({
-      amount: String(invoice.amount_due),
+      amount: remaining ? String(remaining) : '',
       payment_date: new Date().toISOString().slice(0, 10),
       method: 'cash',
       collector_id: defaultCollectorId ?? '',
@@ -117,12 +139,17 @@ export function InvoicesSection({
   async function submitPayment(e: FormEvent) {
     e.preventDefault()
     if (!paymentModalInvoice) return
+    const amount = Number(paymentForm.amount)
+    if (amount > paymentRemaining) {
+      setError(`Amount can't exceed what's left on this invoice (${paymentRemaining.toFixed(2)}).`)
+      return
+    }
     try {
       await createPayment({
         invoice_id: paymentModalInvoice.id,
         subscriber_id: subscriberId,
         collector_id: paymentForm.collector_id || null,
-        amount: Number(paymentForm.amount),
+        amount,
         payment_date: paymentForm.payment_date,
         method: paymentForm.method,
         note: paymentForm.note || null,
@@ -141,6 +168,78 @@ export function InvoicesSection({
       onChanged?.()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to log payment')
+    }
+  }
+
+  function openEditPayment(invoice: Invoice, payment: PaymentWithCollector) {
+    setError(null)
+    const otherPayments = (payments[invoice.id] ?? []).filter((p) => p.id !== payment.id)
+    const alreadyPaid = otherPayments.reduce((sum, p) => sum + p.amount, 0)
+    setEditRemaining(Math.max(invoice.amount_due - alreadyPaid, 0))
+    setEditingPayment(payment)
+    setEditForm({
+      amount: String(payment.amount),
+      payment_date: payment.payment_date,
+      method: payment.method,
+      collector_id: payment.collector_id ?? '',
+      note: payment.note ?? '',
+    })
+  }
+
+  async function submitEditPayment(e: FormEvent) {
+    e.preventDefault()
+    if (!editingPayment) return
+    const amount = Number(editForm.amount)
+    if (amount > editRemaining) {
+      setError(`Amount can't exceed what's left on this invoice (${editRemaining.toFixed(2)}).`)
+      return
+    }
+    try {
+      await updatePayment(editingPayment.id, {
+        amount,
+        payment_date: editForm.payment_date,
+        method: editForm.method,
+        collector_id: editForm.collector_id || null,
+        note: editForm.note || null,
+      })
+      logActivity(
+        staff?.id ?? null,
+        `${staff?.username ?? 'Someone'} edited a payment for subscriber ${subscriberName} (now ${editForm.amount})`,
+        'payment',
+        editingPayment.invoice_id ?? undefined,
+      )
+      const invoiceId = editingPayment.invoice_id
+      setEditingPayment(null)
+      await refresh()
+      if (invoiceId) {
+        const rows = await listPaymentsForInvoice(invoiceId)
+        setPayments((prev) => ({ ...prev, [invoiceId]: rows }))
+      }
+      onChanged?.()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update payment')
+    }
+  }
+
+  async function handleDeletePayment(invoiceId: string | null, payment: PaymentWithCollector) {
+    if (!confirm(`Delete this payment of ${payment.amount}?`)) return
+    setError(null)
+    try {
+      await deletePayment(payment.id)
+      logActivity(
+        staff?.id ?? null,
+        `${staff?.username ?? 'Someone'} deleted a payment of ${payment.amount} for subscriber ${subscriberName}`,
+        'payment',
+        invoiceId ?? undefined,
+      )
+      await refresh()
+      if (invoiceId) {
+        const rows = await listPaymentsForInvoice(invoiceId)
+        setPayments((prev) => ({ ...prev, [invoiceId]: rows }))
+      }
+      onChanged?.()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete payment')
     }
   }
 
@@ -258,15 +357,31 @@ export function InvoicesSection({
                 {(payments[invoice.id] ?? []).map((payment) => (
                   <div
                     key={payment.id}
-                    className="rounded-md bg-neutral-50 p-2 text-sm dark:bg-neutral-700/50"
+                    className="flex items-start justify-between gap-2 rounded-md bg-neutral-50 p-2 text-sm dark:bg-neutral-700/50"
                   >
-                    <p className="text-neutral-800 dark:text-neutral-100">
-                      {payment.amount} on {payment.payment_date} via {payment.method}
-                    </p>
-                    <p className="text-neutral-500 dark:text-neutral-400">
-                      Collector: {payment.collectors?.name ?? '—'}
-                      {payment.note && ` · ${payment.note}`}
-                    </p>
+                    <div className="min-w-0">
+                      <p className="text-neutral-800 dark:text-neutral-100">
+                        {payment.amount} on {payment.payment_date} via {payment.method}
+                      </p>
+                      <p className="text-neutral-500 dark:text-neutral-400">
+                        Collector: {payment.collectors?.name ?? '—'}
+                        {payment.note && ` · ${payment.note}`}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <button
+                        onClick={() => openEditPayment(invoice, payment)}
+                        className="text-xs font-medium text-blue-600 dark:text-blue-400"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeletePayment(invoice.id, payment)}
+                        className="text-xs font-medium text-red-600 dark:text-red-400"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {(payments[invoice.id] ?? []).length === 0 && (
@@ -289,11 +404,12 @@ export function InvoicesSection({
         title={`Log payment · ${paymentModalInvoice?.period_month ?? ''}`}
       >
         <form onSubmit={submitPayment}>
-          <label className={labelClass}>Amount</label>
+          <label className={labelClass}>Amount (max {paymentRemaining.toFixed(2)})</label>
           <input
             type="number"
             step="0.01"
             min="0"
+            max={paymentRemaining}
             value={paymentForm.amount}
             onChange={(e) => setPaymentForm((f) => ({ ...f, amount: e.target.value }))}
             className={`${inputClass} mb-4`}
@@ -378,6 +494,67 @@ export function InvoicesSection({
               onClick={() => setPostponeModalInvoice(null)}
               className={secondaryButtonClass}
             >
+              Cancel
+            </button>
+            <button type="submit" className={primaryButtonClass}>
+              Save
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        open={Boolean(editingPayment)}
+        onClose={() => setEditingPayment(null)}
+        title="Edit payment"
+      >
+        <form onSubmit={submitEditPayment}>
+          <label className={labelClass}>Amount (max {editRemaining.toFixed(2)})</label>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            max={editRemaining}
+            value={editForm.amount}
+            onChange={(e) => setEditForm((f) => ({ ...f, amount: e.target.value }))}
+            className={`${inputClass} mb-4`}
+            required
+          />
+          <label className={labelClass}>Payment date</label>
+          <input
+            type="date"
+            value={editForm.payment_date}
+            onChange={(e) => setEditForm((f) => ({ ...f, payment_date: e.target.value }))}
+            className={`${inputClass} mb-4`}
+            required
+          />
+          <label className={labelClass}>Method</label>
+          <input
+            value={editForm.method}
+            onChange={(e) => setEditForm((f) => ({ ...f, method: e.target.value }))}
+            className={`${inputClass} mb-4`}
+          />
+          <label className={labelClass}>Collector</label>
+          <select
+            value={editForm.collector_id}
+            onChange={(e) => setEditForm((f) => ({ ...f, collector_id: e.target.value }))}
+            className={`${inputClass} mb-4`}
+          >
+            <option value="">None</option>
+            {collectors.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <label className={labelClass}>Note</label>
+          <input
+            value={editForm.note}
+            onChange={(e) => setEditForm((f) => ({ ...f, note: e.target.value }))}
+            className={`${inputClass} mb-4`}
+          />
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setEditingPayment(null)} className={secondaryButtonClass}>
               Cancel
             </button>
             <button type="submit" className={primaryButtonClass}>

@@ -44,6 +44,7 @@ const navSections: {
       { to: '/admin/products', label: 'Products', collectorHidden: true },
       { to: '/admin/import', label: 'Import subscribers', collectorHidden: true },
       { to: '/admin/missing-data', label: 'Missing data', collectorHidden: true },
+      { to: '/admin/duplicates', label: 'Duplicate subscribers', collectorHidden: true },
       { to: '/admin/company-payments', label: 'Company Payments', collectorHidden: true },
       { to: '/admin/activity-log', label: 'Activity Log', collectorHidden: true },
     ],

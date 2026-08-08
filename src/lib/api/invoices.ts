@@ -44,6 +44,27 @@ export async function createPayment(input: PaymentInput) {
   return data as Payment
 }
 
+// Editing/deleting a payment re-triggers sync_invoice_status (it fires on
+// UPDATE/DELETE too, not just INSERT -- see trg_payments_sync_invoice in
+// 0001_init.sql), so the invoice's status is always correctly recomputed
+// from whatever payments remain. It deliberately does NOT reverse the
+// auto-renew-on-paid expiry bump if a payment drops the invoice back out of
+// 'paid' -- same documented behavior as deleting a payment already had
+// before this UI existed (0010_auto_renew_on_paid.sql).
+export async function updatePayment(
+  id: string,
+  input: Pick<PaymentInput, 'amount' | 'payment_date' | 'method' | 'collector_id' | 'note'>,
+) {
+  const { data, error } = await supabase.from('payments').update(input).eq('id', id).select().single()
+  if (error) throw error
+  return data as Payment
+}
+
+export async function deletePayment(id: string) {
+  const { error } = await supabase.from('payments').delete().eq('id', id)
+  if (error) throw error
+}
+
 export async function postponeInvoice(
   invoiceId: string,
   newDueDate: string,
