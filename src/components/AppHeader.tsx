@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Link, NavLink } from 'react-router-dom'
-import { Menu, X, LogOut } from 'lucide-react'
+import { Link, NavLink, useLocation } from 'react-router-dom'
+import { Menu, X, LogOut, ChevronDown } from 'lucide-react'
 import { useStaff } from '../context/StaffContext'
 import { isAdmin, isCollector } from '../lib/permissions'
 
@@ -16,24 +16,23 @@ export function HeaderActions({ children }: { children: ReactNode }) {
   return createPortal(children, node)
 }
 
-// collectorHidden marks every link a collector account can't reach --
-// ProtectedRoute enforces the actual restriction, this just keeps the menu
-// from listing routes that would immediately bounce them back.
-const navSections: {
-  heading: string | null
-  links: { to: string; label: string; adminOnly?: boolean; collectorHidden?: boolean }[]
-}[] = [
+type NavLinkItem = { to: string; label: string; adminOnly?: boolean; collectorHidden?: boolean }
+
+// Everyday pages the whole staff uses -- kept flat and always visible, one
+// tap away, never buried in a dropdown.
+const primaryLinks: NavLinkItem[] = [
+  { to: '/', label: 'Dashboard', collectorHidden: true },
+  { to: '/subscribers', label: 'Subscribers' },
+  { to: '/reports/monthly-log', label: 'Monthly Log', collectorHidden: true },
+  { to: '/reports/financials', label: 'Financial Report', adminOnly: true, collectorHidden: true },
+  { to: '/field', label: 'Field View (offline)', collectorHidden: true },
+]
+
+// Admin-only, lower-frequency pages -- grouped into collapsible dropdowns
+// by what they're for, instead of one long flat list.
+const groups: { key: string; heading: string; links: NavLinkItem[] }[] = [
   {
-    heading: null,
-    links: [
-      { to: '/', label: 'Dashboard', collectorHidden: true },
-      { to: '/subscribers', label: 'Subscribers' },
-      { to: '/reports/monthly-log', label: 'Monthly Log', collectorHidden: true },
-      { to: '/reports/financials', label: 'Financial Report', adminOnly: true, collectorHidden: true },
-      { to: '/field', label: 'Field View (offline)', collectorHidden: true },
-    ],
-  },
-  {
+    key: 'reference',
     heading: 'Reference data',
     links: [
       { to: '/admin/companies', label: 'Companies', collectorHidden: true },
@@ -42,22 +41,55 @@ const navSections: {
       { to: '/admin/owners', label: 'Owners', collectorHidden: true },
       { to: '/admin/regions', label: 'Regions', collectorHidden: true },
       { to: '/admin/products', label: 'Products', collectorHidden: true },
+    ],
+  },
+  {
+    key: 'subscriber-tools',
+    heading: 'Subscriber tools',
+    links: [
       { to: '/admin/import', label: 'Import subscribers', collectorHidden: true },
       { to: '/admin/missing-data', label: 'Missing data', collectorHidden: true },
       { to: '/admin/duplicates', label: 'Duplicate subscribers', collectorHidden: true },
+    ],
+  },
+  {
+    key: 'finance',
+    heading: 'Finance & activity',
+    links: [
       { to: '/admin/company-payments', label: 'Company Payments', collectorHidden: true },
       { to: '/admin/activity-log', label: 'Activity Log', collectorHidden: true },
     ],
   },
 ]
 
+function visibleLinks(links: NavLinkItem[], staff: ReturnType<typeof useStaff>['staff']) {
+  return links.filter((l) => (!l.adminOnly || isAdmin(staff)) && (!l.collectorHidden || !isCollector(staff)))
+}
+
 // Wraps a layout's page content: renders the header (hamburger + title +
 // portal target for HeaderActions) and the slide-out nav drawer, with
 // `children` (typically <Outlet/>) rendered below.
 export function AppHeader({ title = 'ISP Manager', children }: { title?: string; children: ReactNode }) {
   const { staff, logout } = useStaff()
+  const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
   const [actionsNode, setActionsNode] = useState<HTMLDivElement | null>(null)
+  // A group starts open if the current page lives inside it, so navigating
+  // there and reopening the menu doesn't hide where you are.
+  const [openGroups, setOpenGroups] = useState<Set<string>>(
+    () => new Set(groups.filter((g) => g.links.some((l) => location.pathname.startsWith(l.to))).map((g) => g.key)),
+  )
+
+  function toggleGroup(key: string) {
+    setOpenGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  const visiblePrimary = visibleLinks(primaryLinks, staff)
 
   return (
     <HeaderActionsContext.Provider value={actionsNode}>
@@ -80,11 +112,19 @@ export function AppHeader({ title = 'ISP Manager', children }: { title?: string;
 
       {children}
 
-      {menuOpen && (
-        <div className="fixed inset-0 z-40 flex">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setMenuOpen(false)} />
-          <nav className="relative flex h-full w-72 max-w-[85vw] flex-col overflow-y-auto bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
+      <div
+        className={`fixed inset-0 z-40 flex transition-opacity duration-200 ${
+          menuOpen ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
+        }`}
+        aria-hidden={!menuOpen}
+      >
+        <div className="absolute inset-0 bg-black/40" onClick={() => setMenuOpen(false)} />
+        <nav
+          className={`relative flex h-full w-72 max-w-[85vw] flex-col overflow-y-auto bg-white shadow-xl transition-transform duration-200 ease-out ${
+            menuOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
+        >
+          <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
               <span className="font-semibold text-neutral-900">Menu</span>
               <button
                 onClick={() => setMenuOpen(false)}
@@ -96,33 +136,65 @@ export function AppHeader({ title = 'ISP Manager', children }: { title?: string;
             </div>
 
             <div className="flex-1 px-2 py-3">
-              {navSections.map((section, i) => {
-                const links = section.links.filter(
-                  (l) => (!l.adminOnly || isAdmin(staff)) && (!l.collectorHidden || !isCollector(staff)),
-                )
+              {visiblePrimary.length > 0 && (
+                <div className="mb-4">
+                  {visiblePrimary.map((link) => (
+                    <NavLink
+                      key={link.to}
+                      to={link.to}
+                      end={link.to === '/'}
+                      onClick={() => setMenuOpen(false)}
+                      className={({ isActive }) =>
+                        `block rounded-md px-3 py-2.5 text-sm font-medium ${
+                          isActive ? 'bg-indigo-50 text-indigo-600' : 'text-neutral-700 active:bg-neutral-100'
+                        }`
+                      }
+                    >
+                      {link.label}
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+
+              {groups.map((group) => {
+                const links = visibleLinks(group.links, staff)
                 if (links.length === 0) return null
+                const isOpen = openGroups.has(group.key)
                 return (
-                  <div key={i} className="mb-4">
-                    {section.heading && (
-                      <p className="mb-1 px-3 text-xs font-semibold uppercase tracking-wide text-neutral-400">
-                        {section.heading}
-                      </p>
-                    )}
-                    {links.map((link) => (
-                      <NavLink
-                        key={link.to}
-                        to={link.to}
-                        end={link.to === '/'}
-                        onClick={() => setMenuOpen(false)}
-                        className={({ isActive }) =>
-                          `block rounded-md px-3 py-2.5 text-sm font-medium ${
-                            isActive ? 'bg-indigo-50 text-indigo-600' : 'text-neutral-700 active:bg-neutral-100'
-                          }`
-                        }
-                      >
-                        {link.label}
-                      </NavLink>
-                    ))}
+                  <div key={group.key} className="mb-1">
+                    <button
+                      onClick={() => toggleGroup(group.key)}
+                      aria-expanded={isOpen}
+                      className="flex w-full items-center justify-between rounded-md px-3 py-2.5 text-left text-sm font-semibold text-neutral-600 active:bg-neutral-100"
+                    >
+                      {group.heading}
+                      <ChevronDown
+                        size={16}
+                        className={`text-neutral-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                      />
+                    </button>
+                    <div
+                      className={`grid transition-[grid-template-rows,opacity] duration-200 ease-in-out ${
+                        isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+                      }`}
+                    >
+                      <div className="overflow-hidden">
+                        {links.map((link) => (
+                          <NavLink
+                            key={link.to}
+                            to={link.to}
+                            onClick={() => setMenuOpen(false)}
+                            className={({ isActive }) =>
+                              `block rounded-md py-2 pl-6 pr-3 text-sm font-medium ${
+                                isActive ? 'bg-indigo-50 text-indigo-600' : 'text-neutral-700 active:bg-neutral-100'
+                              }`
+                            }
+                          >
+                            {link.label}
+                          </NavLink>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 )
               })}
@@ -142,7 +214,6 @@ export function AppHeader({ title = 'ISP Manager', children }: { title?: string;
             </div>
           </nav>
         </div>
-      )}
     </HeaderActionsContext.Provider>
   )
 }
