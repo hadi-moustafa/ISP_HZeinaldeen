@@ -23,6 +23,10 @@ export interface Subscriber {
   mac_address: string | null
   price: number | null
   balance: number | null
+  // Current total outstanding across the subscriber's unpaid/partial
+  // invoices -- kept live-synced by DB triggers (0016_billing_engine.sql),
+  // the one source of truth for "in debt" app-wide.
+  debt: number
   created_at: string
   updated_at: string
 }

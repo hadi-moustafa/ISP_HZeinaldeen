@@ -121,20 +121,41 @@ export async function doubleNextMonthInvoice(
   }
 }
 
-// Bills a newly-created active subscriber for the current period immediately,
-// rather than leaving them with no invoice (and therefore no working Pay
-// button) until the next monthly cron run. Safe to double-generate later:
-// invoices has UNIQUE(subscriber_id, period_month), so the cron's own
-// insert attempt for this same subscriber+period just hits 23505 and is
-// skipped, exactly like a manual re-run of the cron already is.
-export async function createInvoice(input: {
-  subscriber_id: string
-  service_id: string
-  period_month: string
-  amount_due: number
-}) {
-  const { error } = await supabase.from('invoices').insert({ ...input, due_date: input.period_month })
-  if (error && error.code !== '23505') throw error
+// Single source of truth for what a subscriber owes a given period --
+// their custom price override if set, else the service's sell_price, plus
+// one period's carried-forward shortfall if the immediately preceding
+// period was left unpaid/partial (see 0016_billing_engine.sql for the
+// exact rule). The generate-monthly-invoices Edge Function calls the same
+// Postgres function directly, so cron-generated and on-demand invoices are
+// never computed differently.
+export async function computeInvoiceAmount(subscriberId: string, periodMonth: string) {
+  const { data, error } = await supabase.rpc('compute_invoice_amount', {
+    p_subscriber_id: subscriberId,
+    p_period_month: periodMonth,
+  })
+  if (error) throw error
+  return data as number
+}
+
+// Bills a subscriber for a period on demand (a newly-created subscriber's
+// first bill, or the subscriber list's Pay button finding no invoice yet)
+// rather than leaving them with no invoice -- and no working Pay button --
+// until the next monthly cron run. Goes through create_period_invoice()
+// (0017_billing_engine_fix.sql), the same atomic function the cron Edge
+// Function calls, so both compute amount_due (custom price + one period's
+// carried-forward shortfall) and close out the invoice that shortfall came
+// from identically -- never two different implementations that could
+// drift apart. Safe to call when an invoice already exists for that
+// period: the function's own ON CONFLICT DO NOTHING makes it a no-op,
+// same as a cron re-run today.
+export async function createPeriodInvoice(subscriberId: string, serviceId: string, periodMonth: string) {
+  const { data, error } = await supabase.rpc('create_period_invoice', {
+    p_subscriber_id: subscriberId,
+    p_service_id: serviceId,
+    p_period_month: periodMonth,
+  })
+  if (error) throw error
+  return data as string | null
 }
 
 export async function generateMonthlyInvoices() {

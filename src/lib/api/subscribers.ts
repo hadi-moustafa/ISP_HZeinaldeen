@@ -132,17 +132,15 @@ export async function getSubscriber(id: string) {
   return data as unknown as SubscriberWithRelations
 }
 
-// Subscribers currently carrying debt (any unpaid/partial invoice). Fetched
-// separately and applied client-side rather than as a PostgREST embedded
-// filter, since "paid up" (no matching invoice at all) doesn't map cleanly
-// onto embedded-resource filtering.
+// Subscribers currently carrying debt. Reads the stored subscribers.debt
+// column (kept live-synced by DB triggers -- see 0016_billing_engine.sql)
+// rather than scanning invoices at read time; debt > 0 is the one source
+// of truth for "in debt" everywhere in the app now (this list's Debt
+// filter, the dashboard's debt count, card border color).
 export async function listDebtSubscriberIds(): Promise<Set<string>> {
-  const { data, error } = await supabase
-    .from('invoices')
-    .select('subscriber_id')
-    .in('status', ['unpaid', 'partial'])
+  const { data, error } = await supabase.from('subscribers').select('id').gt('debt', 0)
   if (error) throw error
-  return new Set((data ?? []).map((row) => row.subscriber_id as string))
+  return new Set((data ?? []).map((row) => row.id as string))
 }
 
 export interface SubscriberInput {

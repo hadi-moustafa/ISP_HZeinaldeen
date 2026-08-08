@@ -16,7 +16,13 @@ import { listCompanies } from '../../lib/api/companies'
 import { listServices } from '../../lib/api/services'
 import { listRegions } from '../../lib/api/regions'
 import { listMonthlyLog } from '../../lib/api/reports'
-import { createPayment, postponeInvoice, doubleNextMonthInvoice, createInvoice } from '../../lib/api/invoices'
+import {
+  createPayment,
+  postponeInvoice,
+  doubleNextMonthInvoice,
+  createPeriodInvoice,
+  computeInvoiceAmount,
+} from '../../lib/api/invoices'
 import { logActivity } from '../../lib/api/activityLog'
 import { openWhatsApp, paidMessage, postponedMessage, debtMessage } from '../../lib/whatsapp'
 import type { SubscriberWithRelations } from '../../types/subscribers'
@@ -59,7 +65,12 @@ const BILLING_STYLES: Record<BillingKey, { border: string; pill: string; bar: st
   },
 }
 
-function billingKeyFor(status: string | undefined): BillingKey {
+// debt (subscribers.debt, live-synced by DB triggers) is the authoritative
+// signal for red -- it also catches debt carried from a prior period that
+// this period's own invoice status wouldn't show on its own. Falls back to
+// this period's invoice status for paid/postponed once there's no debt.
+function billingKeyFor(status: string | undefined, debt: number): BillingKey {
+  if (debt > 0) return 'debt'
   if (!status) return 'none'
   if (status === 'paid' || status === 'waived') return 'paid'
   if (status === 'postponed') return 'postponed'
@@ -293,6 +304,17 @@ export function SubscribersListPage() {
     const service = sub.service_id ? services.find((s) => s.id === sub.service_id) : undefined
     const remaining = log ? Math.max(log.amount_due - log.amount_paid, 0) : (service?.sell_price ?? 0)
     setPaymentRemaining(remaining)
+    // No invoice yet this period -- refine the estimate above (which
+    // ignores any custom price/carried-forward shortfall) with the real
+    // amount submitPayment would actually bill, once it resolves.
+    if (!log && sub.service_id) {
+      computeInvoiceAmount(sub.id, currentPeriodMonth())
+        .then((amountDue) => {
+          setPaymentRemaining(amountDue)
+          setPaymentForm((f) => (f.amount === String(remaining) ? { ...f, amount: String(amountDue) } : f))
+        })
+        .catch(() => {})
+    }
     setPaymentForm({
       amount: remaining ? String(remaining) : '',
       payment_date: new Date().toISOString().slice(0, 10),
@@ -354,21 +376,22 @@ export function SubscribersListPage() {
       if (!log && (paymentMode === 'paid' || paymentMode === 'postponed') && sub.service_id) {
         const service = services.find((s) => s.id === sub.service_id)
         if (service) {
-          await createInvoice({
-            subscriber_id: sub.id,
-            service_id: sub.service_id,
-            period_month: currentPeriodMonth(),
-            amount_due: service.sell_price,
-          })
-          const rows = await listMonthlyLog(currentPeriodMonth())
+          const period = currentPeriodMonth()
+          await createPeriodInvoice(sub.id, sub.service_id, period)
+          const rows = await listMonthlyLog(period)
           setMonthlyLogBySubscriber(Object.fromEntries(rows.map((row) => [row.subscriber_id, row])))
           log = rows.find((row) => row.subscriber_id === sub.id)
         }
       }
 
       if (paymentMode === 'paid') {
-        if (Number(paymentForm.amount) > paymentRemaining) {
-          throw new Error(`Amount can't exceed what's left on this invoice (${paymentRemaining.toFixed(2)}).`)
+        // Re-derive from the freshly (re)fetched log rather than trusting
+        // paymentRemaining from when the modal opened -- if an invoice was
+        // just created above, its real amount_due (custom price +
+        // carried-forward shortfall) can differ from that earlier estimate.
+        const realRemaining = log ? Math.max(log.amount_due - log.amount_paid, 0) : paymentRemaining
+        if (Number(paymentForm.amount) > realRemaining) {
+          throw new Error(`Amount can't exceed what's left on this invoice (${realRemaining.toFixed(2)}).`)
         }
         await createPayment({
           invoice_id: log?.invoice_id ?? null,
@@ -742,7 +765,7 @@ export function SubscribersListPage() {
       <div className="space-y-3">
         {subscribers.map((sub) => {
           const log = monthlyLogBySubscriber[sub.id]
-          const billingKey = billingKeyFor(log?.status)
+          const billingKey = billingKeyFor(log?.status, sub.debt)
           const style = BILLING_STYLES[billingKey]
           const pct = log && log.amount_due > 0 ? Math.round((log.amount_paid / log.amount_due) * 100) : 0
           const addressLine = [sub.address, sub.regions?.name].filter(Boolean).join(', ')

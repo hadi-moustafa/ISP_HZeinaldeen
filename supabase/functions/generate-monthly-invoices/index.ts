@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
 
   const { data: subscribers, error: subsError } = await supabase
     .from('subscribers')
-    .select('id, service_id, services(sell_price)')
+    .select('id, service_id')
     .eq('connection_status', 'active')
     .not('service_id', 'is', null)
 
@@ -37,23 +37,23 @@ Deno.serve(async (req) => {
   const results = { created: 0, skipped: 0 }
 
   for (const sub of subscribers ?? []) {
-    const service = sub.services as unknown as { sell_price: number } | null
-    if (!service) {
-      results.skipped++
-      continue
-    }
-
-    const { error: insertError } = await supabase.from('invoices').insert({
-      subscriber_id: sub.id,
-      service_id: sub.service_id,
-      period_month: periodMonth,
-      amount_due: service.sell_price,
-      due_date: periodMonth,
+    // create_period_invoice() (0017_billing_engine_fix.sql) is the single
+    // source of truth for billing a period: computes the amount (custom
+    // price override if set, else the service's sell_price, plus one
+    // period's carried-forward shortfall if last period was left
+    // unpaid/partial), closes out whatever invoice that shortfall came
+    // from so it isn't double-counted as debt, and inserts the new invoice
+    // -- all atomically. Both this cron and any on-demand invoice creation
+    // in the app call the same function so the two can never drift apart.
+    // Its own ON CONFLICT DO NOTHING makes a re-run for an existing
+    // period a no-op, same as the old plain insert's 23505 handling did.
+    const { data: invoiceId, error: rpcError } = await supabase.rpc('create_period_invoice', {
+      p_subscriber_id: sub.id,
+      p_service_id: sub.service_id,
+      p_period_month: periodMonth,
     })
 
-    if (insertError) {
-      // Unique violation (23505) means this subscriber's invoice for this
-      // month already exists -- expected on a re-run, not a failure.
+    if (rpcError || !invoiceId) {
       results.skipped++
       continue
     }

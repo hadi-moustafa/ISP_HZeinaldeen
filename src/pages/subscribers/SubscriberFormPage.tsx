@@ -11,7 +11,7 @@ import { listCollectors } from '../../lib/api/collectors'
 import { listServices } from '../../lib/api/services'
 import { listCompanies } from '../../lib/api/companies'
 import { listRegions } from '../../lib/api/regions'
-import { createInvoice } from '../../lib/api/invoices'
+import { createPeriodInvoice } from '../../lib/api/invoices'
 import { logActivity } from '../../lib/api/activityLog'
 import { useStaff } from '../../context/StaffContext'
 import type { Owner, Collector, ServiceWithCompany, Region, Company } from '../../types/reference'
@@ -153,15 +153,7 @@ export function SubscriberFormPage() {
         // have no invoice (and no working Pay button) until the next
         // monthly cron run.
         if (input.connection_status === 'active' && input.service_id) {
-          const service = services.find((s) => s.id === input.service_id)
-          if (service) {
-            await createInvoice({
-              subscriber_id: created.id,
-              service_id: input.service_id,
-              period_month: currentPeriodMonth(),
-              amount_due: service.sell_price,
-            })
-          }
+          await createPeriodInvoice(created.id, input.service_id, currentPeriodMonth())
         }
 
         navigate(`/subscribers/${created.id}`)
@@ -407,7 +399,10 @@ export function SubscriberFormPage() {
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={labelClass}>Price (this subscriber's sell price)</label>
+            <label className={labelClass}>
+              Custom price (overrides the service's price for this subscriber's bills; leave blank
+              to use the service's normal price)
+            </label>
             <input
               type="number"
               step="0.01"

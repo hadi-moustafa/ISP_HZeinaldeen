@@ -170,12 +170,20 @@ export function SubscriberDetailPage() {
             <dd className="text-neutral-900 dark:text-neutral-100">{subscriber.mac_address ?? '—'}</dd>
           </div>
           <div>
-            <dt className="text-neutral-500 dark:text-neutral-400">Price</dt>
-            <dd className="text-neutral-900 dark:text-neutral-100">{subscriber.price ?? '—'}</dd>
+            <dt className="text-neutral-500 dark:text-neutral-400">Custom price</dt>
+            <dd className="text-neutral-900 dark:text-neutral-100">
+              {subscriber.price ?? `— (service default)`}
+            </dd>
           </div>
           <div>
             <dt className="text-neutral-500 dark:text-neutral-400">Balance</dt>
             <dd className="text-neutral-900 dark:text-neutral-100">{subscriber.balance ?? '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-neutral-500 dark:text-neutral-400">Debt</dt>
+            <dd className={`font-semibold ${subscriber.debt > 0 ? 'text-red-600' : 'text-neutral-900 dark:text-neutral-100'}`}>
+              {subscriber.debt.toFixed(2)}
+            </dd>
           </div>
         </dl>
 
