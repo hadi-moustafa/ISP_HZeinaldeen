@@ -13,6 +13,7 @@ import { useStaff } from '../../context/StaffContext'
 import { logActivity } from '../../lib/api/activityLog'
 import { updateSubscriberFields } from '../../lib/api/subscribers'
 import { openWhatsApp } from '../../lib/whatsapp'
+import { round2 } from '../../lib/money'
 import { Modal } from '../Modal'
 import {
   inputClass,
@@ -124,7 +125,7 @@ export function InvoicesSection({
     const rows = payments[invoice.id] ?? (await listPaymentsForInvoice(invoice.id))
     setPayments((prev) => ({ ...prev, [invoice.id]: rows }))
     const alreadyPaid = rows.reduce((sum, p) => sum + p.amount, 0)
-    const remaining = Math.max(invoice.amount_due - alreadyPaid, 0)
+    const remaining = round2(Math.max(invoice.amount_due - alreadyPaid, 0))
     setPaymentRemaining(remaining)
     setPaymentModalInvoice(invoice)
     setPaymentForm({
@@ -175,7 +176,7 @@ export function InvoicesSection({
     setError(null)
     const otherPayments = (payments[invoice.id] ?? []).filter((p) => p.id !== payment.id)
     const alreadyPaid = otherPayments.reduce((sum, p) => sum + p.amount, 0)
-    setEditRemaining(Math.max(invoice.amount_due - alreadyPaid, 0))
+    setEditRemaining(round2(Math.max(invoice.amount_due - alreadyPaid, 0)))
     setEditingPayment(payment)
     setEditForm({
       amount: String(payment.amount),

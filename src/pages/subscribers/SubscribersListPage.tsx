@@ -25,6 +25,7 @@ import {
 } from '../../lib/api/invoices'
 import { logActivity } from '../../lib/api/activityLog'
 import { openWhatsApp, paidMessage, postponedMessage, debtMessage } from '../../lib/whatsapp'
+import { round2 } from '../../lib/money'
 import type { SubscriberWithRelations } from '../../types/subscribers'
 import { emptyFilters } from '../../types/subscribers'
 import type { MonthlyLogRow } from '../../types/reports'
@@ -311,7 +312,7 @@ export function SubscribersListPage() {
 
     const log = monthlyLogBySubscriber[sub.id]
     const service = sub.service_id ? services.find((s) => s.id === sub.service_id) : undefined
-    const remaining = log ? Math.max(log.amount_due - log.amount_paid, 0) : (service?.sell_price ?? 0)
+    const remaining = round2(log ? Math.max(log.amount_due - log.amount_paid, 0) : (service?.sell_price ?? 0))
     setPaymentRemaining(remaining)
     // No invoice yet this period -- refine the estimate above (which
     // ignores any custom price/carried-forward shortfall) with the real
@@ -398,7 +399,7 @@ export function SubscribersListPage() {
         // paymentRemaining from when the modal opened -- if an invoice was
         // just created above, its real amount_due (custom price +
         // carried-forward shortfall) can differ from that earlier estimate.
-        const realRemaining = log ? Math.max(log.amount_due - log.amount_paid, 0) : paymentRemaining
+        const realRemaining = round2(log ? Math.max(log.amount_due - log.amount_paid, 0) : paymentRemaining)
         if (Number(paymentForm.amount) > realRemaining) {
           throw new Error(`Amount can't exceed what's left on this invoice (${realRemaining.toFixed(2)}).`)
         }
