@@ -35,9 +35,9 @@ import { Modal } from '../../components/Modal'
 import { inputClass, labelClass, secondaryButtonClass, primaryButtonClass } from '../../lib/uiClasses'
 import { exportToExcel } from '../../lib/exportExcel'
 
-type BillingKey = 'paid' | 'debt' | 'postponed' | 'none'
+type BillingKey = 'paid' | 'debt' | 'postponed' | 'partial' | 'none'
 
-// Literal client-specified scheme: green = paid, orange = postponed, red = debt.
+// Literal client-specified scheme: green = paid, orange = postponed/partial, red = debt (fully unpaid).
 const BILLING_STYLES: Record<BillingKey, { border: string; pill: string; bar: string; amount: string }> = {
   paid: {
     border: 'border-l-green-500',
@@ -57,6 +57,12 @@ const BILLING_STYLES: Record<BillingKey, { border: string; pill: string; bar: st
     bar: 'bg-orange-500',
     amount: 'text-orange-600',
   },
+  partial: {
+    border: 'border-l-orange-500',
+    pill: 'bg-orange-100 text-orange-700',
+    bar: 'bg-orange-500',
+    amount: 'text-orange-600',
+  },
   none: {
     border: 'border-l-neutral-300',
     pill: 'bg-neutral-100 text-neutral-500',
@@ -67,14 +73,17 @@ const BILLING_STYLES: Record<BillingKey, { border: string; pill: string; bar: st
 
 // debt (subscribers.debt, live-synced by DB triggers) is the authoritative
 // signal for red -- it also catches debt carried from a prior period that
-// this period's own invoice status wouldn't show on its own. Falls back to
-// this period's invoice status for paid/postponed once there's no debt.
+// this period's own invoice status wouldn't show on its own. A partial
+// payment on the current period's invoice is checked first, though, so
+// "some money's already come in this month" reads orange rather than the
+// same red as a subscriber who's paid nothing at all.
 function billingKeyFor(status: string | undefined, debt: number): BillingKey {
+  if (status === 'partial') return 'partial'
   if (debt > 0) return 'debt'
   if (!status) return 'none'
   if (status === 'paid' || status === 'waived') return 'paid'
   if (status === 'postponed') return 'postponed'
-  return 'debt' // unpaid, partial
+  return 'debt' // unpaid
 }
 
 function currentPeriodMonth() {
