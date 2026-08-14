@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useStaff } from '../context/StaffContext'
 import { isAdmin } from '../lib/permissions'
 import { generateMonthlyInvoices } from '../lib/api/invoices'
@@ -31,6 +31,36 @@ function statusDotColor(log: MonthlyLogRow | undefined, debt: number): string {
   if (log?.status === 'paid' || log?.status === 'waived') return 'bg-emerald-500'
   if (log?.status === 'postponed') return 'bg-orange-500'
   return 'bg-neutral-300'
+}
+
+// Today / +2 days / +5 days always render in this fixed red-amber-gray order
+// -- matches the "how urgent" reading left-to-right, independent of bucket index.
+const BUCKET_DOT_COLORS = ['bg-red-500', 'bg-amber-500', 'bg-neutral-400']
+
+function ForecastCard({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className={`${cardClass} mb-4`}>
+      <div className="mb-3 flex items-center gap-2">
+        <span className="h-5 w-1 shrink-0 rounded-full bg-gradient-to-b from-blue-500 to-cyan-400" />
+        <h2 className="text-sm font-bold uppercase tracking-wide text-neutral-900">{title}</h2>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function ForecastTile({ color, label, count, amount }: { color: string; label: string; count: number; amount: number }) {
+  return (
+    <div className="min-w-0 rounded-xl bg-neutral-50 px-2.5 py-2.5">
+      <div className="mb-1.5 flex items-center gap-1.5">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${color}`} />
+        <span className="truncate text-[10px] font-medium uppercase tracking-wide text-neutral-500">{label}</span>
+      </div>
+      <p className="text-xl font-bold text-neutral-900">
+        {count} <span className="text-xs font-medium text-neutral-400">· ${amount.toFixed(0)}</span>
+      </p>
+    </div>
+  )
 }
 
 export function DashboardPage() {
@@ -215,51 +245,75 @@ export function DashboardPage() {
 
           {/* Expiring soon -- who to go collect from */}
           {expiryWatch && (
-            <div className="mb-4">
-              <h2 className="mb-2 text-sm font-semibold text-neutral-900">Expiring soon</h2>
-              <div className="space-y-3">
-                {expiryWatch.map((bucket) => (
-                  <div key={bucket.date}>
-                    <p className="mb-1 text-xs font-medium text-neutral-500">{bucket.label}</p>
-                    {bucket.subscribers.length === 0 ? (
-                      <p className="text-xs text-neutral-400">None</p>
-                    ) : (
-                      <div className="space-y-1.5">
-                        {bucket.subscribers.map((sub) => (
-                          <SubscriberRow key={sub.id} sub={sub} />
-                        ))}
-                      </div>
-                    )}
-                  </div>
+            <ForecastCard title="Expiring soon">
+              <div className="mb-3 grid grid-cols-3 gap-2">
+                {expiryWatch.map((bucket, i) => (
+                  <ForecastTile
+                    key={bucket.date}
+                    color={BUCKET_DOT_COLORS[i]}
+                    label={bucket.label}
+                    count={bucket.subscribers.length}
+                    amount={bucket.subscribers.reduce((sum, sub) => sum + (sub.services?.sell_price ?? 0), 0)}
+                  />
                 ))}
               </div>
-            </div>
+              <div className="space-y-3">
+                {expiryWatch.map(
+                  (bucket) =>
+                    bucket.subscribers.length > 0 && (
+                      <div key={bucket.date}>
+                        <p className="mb-1 text-xs font-medium text-neutral-500">{bucket.label}</p>
+                        <div className="space-y-1.5">
+                          {bucket.subscribers.map((sub) => (
+                            <SubscriberRow key={sub.id} sub={sub} />
+                          ))}
+                        </div>
+                      </div>
+                    ),
+                )}
+                {expiryWatch.every((b) => b.subscribers.length === 0) && (
+                  <p className="text-xs text-neutral-400">Nobody expiring in the next 5 days.</p>
+                )}
+              </div>
+            </ForecastCard>
           )}
 
           {/* Per-company payment alerts */}
           {expiryWatch && (
-            <div className="mb-4">
-              <h2 className="mb-2 text-sm font-semibold text-neutral-900">Company payments due</h2>
-              <div className="space-y-3">
-                {expiryWatch.map((bucket) => (
-                  <div key={bucket.date}>
-                    <p className="mb-1 text-xs font-medium text-neutral-500">{bucket.label}</p>
-                    {bucket.companyTotals.length === 0 ? (
-                      <p className="text-xs text-neutral-400">None</p>
-                    ) : (
-                      <div className={`${cardClass} space-y-1.5`}>
-                        {bucket.companyTotals.map((ct) => (
-                          <div key={ct.companyName} className="flex items-center justify-between text-sm">
-                            <span className="text-neutral-700">{ct.companyName}</span>
-                            <span className="font-semibold text-neutral-900">{ct.amount.toFixed(2)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+            <ForecastCard title="Company payments due">
+              <div className="mb-3 grid grid-cols-3 gap-2">
+                {expiryWatch.map((bucket, i) => (
+                  <ForecastTile
+                    key={bucket.date}
+                    color={BUCKET_DOT_COLORS[i]}
+                    label={bucket.label}
+                    count={bucket.companyTotals.length}
+                    amount={bucket.companyTotals.reduce((sum, ct) => sum + ct.amount, 0)}
+                  />
                 ))}
               </div>
-            </div>
+              <div className="space-y-3">
+                {expiryWatch.map(
+                  (bucket) =>
+                    bucket.companyTotals.length > 0 && (
+                      <div key={bucket.date}>
+                        <p className="mb-1 text-xs font-medium text-neutral-500">{bucket.label}</p>
+                        <div className="space-y-1.5 rounded-xl bg-neutral-50 px-3 py-2">
+                          {bucket.companyTotals.map((ct) => (
+                            <div key={ct.companyName} className="flex items-center justify-between text-sm">
+                              <span className="text-neutral-700">{ct.companyName}</span>
+                              <span className="font-semibold text-neutral-900">{ct.amount.toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ),
+                )}
+                {expiryWatch.every((b) => b.companyTotals.length === 0) && (
+                  <p className="text-xs text-neutral-400">No company payments due in the next 5 days.</p>
+                )}
+              </div>
+            </ForecastCard>
           )}
 
           {isAdmin(staff) && (
