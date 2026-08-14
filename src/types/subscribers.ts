@@ -34,7 +34,7 @@ export interface Subscriber {
 export interface SubscriberWithRelations extends Subscriber {
   owners: { name: string } | null
   default_collector: { name: string } | null
-  services: { name: string; sell_price: number; companies: { name: string } | null } | null
+  services: { name: string; sell_price: number; paid_price: number; companies: { name: string } | null } | null
   regions: { name: string } | null
   company: { name: string } | null
 }

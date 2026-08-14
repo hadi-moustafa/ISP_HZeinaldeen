@@ -1,6 +1,7 @@
 import { supabase } from '../supabase'
-import { listDebtSubscriberIds } from './subscribers'
+import { listDebtSubscriberIds, listSubscribersByExpiryDates } from './subscribers'
 import type { MonthlyFinancialRow, MonthlyLogRow } from '../../types/reports'
+import type { SubscriberWithRelations } from '../../types/subscribers'
 
 export async function listMonthlyLog(periodMonth: string) {
   const { data, error } = await supabase
@@ -27,6 +28,12 @@ export interface DashboardSummary {
   totalPaid: number
   totalLeft: number
   totalDebtSubscribers: number
+  totalSoldServices: number
+  paidUsers: number
+  unpaidUsers: number
+  totalSoldProducts: number
+  totalPaymentsProducts: number
+  totalPaymentsCollected: number
 }
 
 // totalDue is the total sell price across every active subscriber with a
@@ -38,8 +45,29 @@ export interface DashboardSummary {
 // collections). totalDebtSubscribers reuses listDebtSubscriberIds() (any
 // unpaid/partial invoice, any period) so "in debt" means the same thing
 // here as it does on the subscriber list's Debt filter chip.
+//
+// paidUsers/unpaidUsers are counted only among subscribers that already
+// have a monthly_log row this period (a subscriber with no invoice yet
+// isn't "unpaid", it just hasn't been billed) -- paid/waived count as
+// paid, everything else (unpaid/partial/postponed) counts as unpaid, same
+// split billingKeyFor() uses on the subscriber list.
+//
+// totalSoldProducts/totalPaymentsProducts only look at this month's 'sale'
+// movements. Movements marked payment_status='partial' are excluded from
+// totalPaymentsProducts (but still counted in totalSoldProducts) since
+// product_movements only has a paid/unpaid/partial flag, not an amount-
+// collected ledger like subscriber payments -- there's no way to know how
+// much of a partial sale was actually collected. Known limitation, not
+// solved here.
 export async function getDashboardSummary(periodMonth: string): Promise<DashboardSummary> {
-  const [countRes, expectedRes, logRows, debtIds] = await Promise.all([
+  const monthStart = periodMonth.slice(0, 8) + '01'
+  const nextMonthStart = (() => {
+    const d = new Date(monthStart + 'T00:00:00Z')
+    d.setUTCMonth(d.getUTCMonth() + 1)
+    return d.toISOString().slice(0, 10)
+  })()
+
+  const [countRes, expectedRes, logRows, debtIds, saleMovementsRes] = await Promise.all([
     supabase.from('subscribers').select('id', { count: 'exact', head: true }),
     supabase
       .from('subscribers')
@@ -48,15 +76,33 @@ export async function getDashboardSummary(periodMonth: string): Promise<Dashboar
       .not('service_id', 'is', null),
     listMonthlyLog(periodMonth),
     listDebtSubscriberIds(),
+    supabase
+      .from('product_movements')
+      .select('quantity, unit_price, payment_status')
+      .eq('movement_type', 'sale')
+      .gte('movement_date', monthStart)
+      .lt('movement_date', nextMonthStart),
   ])
   if (countRes.error) throw countRes.error
   if (expectedRes.error) throw expectedRes.error
+  if (saleMovementsRes.error) throw saleMovementsRes.error
 
-  const totalDue = (expectedRes.data as unknown as { services: { sell_price: number } | null }[]).reduce(
-    (sum, r) => sum + (r.services?.sell_price ?? 0),
-    0,
-  )
+  const expectedRows = expectedRes.data as unknown as { services: { sell_price: number } | null }[]
+  const totalDue = expectedRows.reduce((sum, r) => sum + (r.services?.sell_price ?? 0), 0)
   const totalPaid = logRows.reduce((sum, r) => sum + r.amount_paid, 0)
+
+  const paidUsers = logRows.filter((r) => r.status === 'paid' || r.status === 'waived').length
+  const unpaidUsers = logRows.length - paidUsers
+
+  const saleMovements = saleMovementsRes.data as unknown as {
+    quantity: number
+    unit_price: number
+    payment_status: string
+  }[]
+  const totalSoldProducts = saleMovements.reduce((sum, m) => sum + Math.abs(m.quantity), 0)
+  const totalPaymentsProducts = saleMovements
+    .filter((m) => m.payment_status === 'paid')
+    .reduce((sum, m) => sum + Math.abs(m.quantity) * m.unit_price, 0)
 
   return {
     totalSubscribers: countRes.count ?? 0,
@@ -64,5 +110,57 @@ export async function getDashboardSummary(periodMonth: string): Promise<Dashboar
     totalPaid,
     totalLeft: Math.max(totalDue - totalPaid, 0),
     totalDebtSubscribers: debtIds.size,
+    totalSoldServices: expectedRows.length,
+    paidUsers,
+    unpaidUsers,
+    totalSoldProducts,
+    totalPaymentsProducts,
+    totalPaymentsCollected: totalPaid + totalPaymentsProducts,
   }
+}
+
+export interface ExpiryBucket {
+  date: string
+  label: string
+  subscribers: SubscriberWithRelations[]
+  companyTotals: { companyName: string; amount: number }[]
+}
+
+function localDateString(offsetDays: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() + offsetDays)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+// Three separate, non-overlapping exact-day snapshots (today / +2 / +5),
+// not a cumulative window -- confirmed client intent. Single fetch drives
+// both the "expiring soon, go collect" subscriber list and the per-company
+// "what we owe them" alert, grouping the same rows two different ways.
+export async function getExpiryWatch(): Promise<ExpiryBucket[]> {
+  const buckets = [
+    { date: localDateString(0), label: 'Today' },
+    { date: localDateString(2), label: 'In 2 days' },
+    { date: localDateString(5), label: 'In 5 days' },
+  ]
+  const rows = await listSubscribersByExpiryDates(buckets.map((b) => b.date))
+
+  return buckets.map((bucket) => {
+    const subscribers = rows.filter((r) => r.expiry_date === bucket.date)
+    const byCompany = new Map<string, number>()
+    for (const sub of subscribers) {
+      const companyName = sub.services?.companies?.name
+      if (!companyName) continue
+      const owed = sub.services?.paid_price ?? 0
+      byCompany.set(companyName, (byCompany.get(companyName) ?? 0) + owed)
+    }
+    return {
+      date: bucket.date,
+      label: bucket.label,
+      subscribers,
+      companyTotals: Array.from(byCompany.entries()).map(([companyName, amount]) => ({ companyName, amount })),
+    }
+  })
 }

@@ -5,12 +5,26 @@ const SUBSCRIBER_SELECT = `
   *,
   owners(name),
   default_collector:collectors!default_collector_id(name),
-  services(name, sell_price, companies(name)),
+  services(name, sell_price, paid_price, companies(name)),
   regions(name),
   company:companies!company_id(name)
 `
 
 export type SubscriberSearchField = 'name' | 'id' | 'owner' | 'username'
+
+// Active subscribers whose expiry_date is exactly one of the given dates --
+// used by the dashboard's expiry-watch feature (today / +2 / +5 as three
+// separate exact-day snapshots, not a cumulative window).
+export async function listSubscribersByExpiryDates(dates: string[]) {
+  const { data, error } = await supabase
+    .from('subscribers')
+    .select(SUBSCRIBER_SELECT)
+    .eq('connection_status', 'active')
+    .in('expiry_date', dates)
+    .order('name')
+  if (error) throw error
+  return data as unknown as SubscriberWithRelations[]
+}
 
 export async function listSubscribersLite() {
   const { data, error } = await supabase

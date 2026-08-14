@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Plus, Download, Filter, Search, MoreVertical, ChevronDown, Banknote } from 'lucide-react'
 import {
@@ -7,7 +7,6 @@ import {
   deleteSubscriber,
   bulkDeleteSubscribers,
   bulkSetConnectionStatus,
-  updateSubscriberFields,
   type SubscriberSearchField,
 } from '../../lib/api/subscribers'
 import { listOwners } from '../../lib/api/owners'
@@ -16,24 +15,14 @@ import { listCompanies } from '../../lib/api/companies'
 import { listServices } from '../../lib/api/services'
 import { listRegions } from '../../lib/api/regions'
 import { listMonthlyLog } from '../../lib/api/reports'
-import {
-  createPayment,
-  postponeInvoice,
-  doubleNextMonthInvoice,
-  createPeriodInvoice,
-  computeInvoiceAmount,
-} from '../../lib/api/invoices'
 import { logActivity } from '../../lib/api/activityLog'
-import { openWhatsApp, paidMessage, postponedMessage, debtMessage } from '../../lib/whatsapp'
-import { round2 } from '../../lib/money'
 import type { SubscriberWithRelations } from '../../types/subscribers'
 import { emptyFilters } from '../../types/subscribers'
 import type { MonthlyLogRow } from '../../types/reports'
 import type { Owner, Collector, Company, ServiceWithCompany, Region } from '../../types/reference'
 import { useStaff } from '../../context/StaffContext'
 import { HeaderActions } from '../../components/AppHeader'
-import { Modal } from '../../components/Modal'
-import { inputClass, labelClass, secondaryButtonClass, primaryButtonClass } from '../../lib/uiClasses'
+import { PaymentModal } from '../../components/subscriber/PaymentModal'
 import { exportToExcel } from '../../lib/exportExcel'
 
 type BillingKey = 'paid' | 'debt' | 'postponed' | 'partial' | 'none'
@@ -92,13 +81,6 @@ function currentPeriodMonth() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
 }
 
-function nextPeriodMonth(period: string) {
-  const [y, m] = period.split('-').map(Number)
-  const nextM = m === 12 ? 1 : m + 1
-  const nextY = m === 12 ? y + 1 : y
-  return `${nextY}-${String(nextM).padStart(2, '0')}-01`
-}
-
 // Superset of the API's SubscriberSearchField: the free-text modes (name/id/
 // owner/username) map straight through to the API's search+searchField
 // mechanism; the rest (phone/nationalId/notes/collector/company/service/
@@ -137,31 +119,9 @@ export function SubscribersListPage() {
   const [openCardMenuId, setOpenCardMenuId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
+  // Which subscriber the shared PaymentModal is open for, if any --
+  // PaymentModal owns all of its own form state.
   const [paymentSub, setPaymentSub] = useState<SubscriberWithRelations | null>(null)
-  const [paymentMode, setPaymentMode] = useState<'paid' | 'postponed' | 'debt'>('paid')
-  const [paymentForm, setPaymentForm] = useState({
-    amount: '',
-    payment_date: new Date().toISOString().slice(0, 10),
-    method: 'cash',
-    collector_id: '',
-    note: '',
-  })
-  const [postponeForm, setPostponeForm] = useState({ new_due_date: '', reason: '' })
-  const [paymentError, setPaymentError] = useState<string | null>(null)
-  const [paymentSaving, setPaymentSaving] = useState(false)
-
-  // Sending the WhatsApp confirmation is an explicit per-action choice, not
-  // an automatic side effect of logging a payment/postpone/debt -- two
-  // separate submit buttons (Save / Save & Notify) below decide it, rather
-  // than a checkbox. phoneDraft/serviceDraft let staff fill in data missing
-  // from the subscriber record (no phone on file, or no service assigned
-  // yet, which Debt mode needs) right here instead of leaving the modal to
-  // edit the subscriber first.
-  const [phoneDraft, setPhoneDraft] = useState('')
-  const [serviceDraft, setServiceDraft] = useState('')
-  // How much more the current invoice can take -- never lets a logged
-  // payment push the total paid past what's actually owed.
-  const [paymentRemaining, setPaymentRemaining] = useState(0)
 
   const [subscribers, setSubscribers] = useState<SubscriberWithRelations[]>([])
   const [loading, setLoading] = useState(true)
@@ -298,157 +258,12 @@ export function SubscribersListPage() {
     )
   }
 
-  // Pay is always clickable, even with no invoice yet this period (e.g. a
-  // subscriber created between billing runs) -- but nothing is written to
-  // the DB just from opening this modal. An invoice only gets created (if
-  // one's missing) at actual submit time, inside submitPayment -- otherwise
-  // opening the modal and backing out without confirming anything would
-  // leave behind a real unpaid invoice and turn the subscriber red/in-debt
-  // for an action that never happened.
+  // Pay is always clickable, even with no invoice yet this period -- the
+  // shared PaymentModal only writes to the DB at actual submit time, never
+  // just from opening.
   function openPaymentModal(sub: SubscriberWithRelations) {
     setOpenCardMenuId(null)
-    setPaymentError(null)
-    setPaymentMode('paid')
-
-    const log = monthlyLogBySubscriber[sub.id]
-    const service = sub.service_id ? services.find((s) => s.id === sub.service_id) : undefined
-    const remaining = round2(log ? Math.max(log.amount_due - log.amount_paid, 0) : (service?.sell_price ?? 0))
-    setPaymentRemaining(remaining)
-    // No invoice yet this period -- refine the estimate above (which
-    // ignores any custom price/carried-forward shortfall) with the real
-    // amount submitPayment would actually bill, once it resolves.
-    if (!log && sub.service_id) {
-      computeInvoiceAmount(sub.id, currentPeriodMonth())
-        .then((amountDue) => {
-          setPaymentRemaining(amountDue)
-          setPaymentForm((f) => (f.amount === String(remaining) ? { ...f, amount: String(amountDue) } : f))
-        })
-        .catch(() => {})
-    }
-    setPaymentForm({
-      amount: remaining ? String(remaining) : '',
-      payment_date: new Date().toISOString().slice(0, 10),
-      method: 'cash',
-      collector_id: sub.default_collector_id ?? '',
-      note: '',
-    })
-    setPostponeForm({ new_due_date: sub.expiry_date ?? '', reason: '' })
-    setPhoneDraft(sub.phone ?? '')
-    setServiceDraft(sub.service_id ?? '')
     setPaymentSub(sub)
-  }
-
-  // Debt amount is anchored to the subscriber's normal monthly rate
-  // (services.sell_price), not the current invoice's amount_due, so it
-  // stays correct even if this month's invoice was itself already adjusted.
-  function debtDoubleAmount(sub: SubscriberWithRelations) {
-    const log = monthlyLogBySubscriber[sub.id]
-    const base =
-      sub.services?.sell_price ?? services.find((s) => s.id === sub.service_id)?.sell_price ?? log?.amount_due ?? 0
-    return base * 2
-  }
-
-  async function submitPayment(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    if (!paymentSub) return
-    // Which of the two submit buttons (Save / Save & Notify) triggered this
-    // -- both are type="submit" so HTML5 required-field validation still
-    // runs no matter which one is clicked, but only "Save & Notify" should
-    // open WhatsApp afterward.
-    const notify = (e.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'notify'
-    setPaymentSaving(true)
-    setPaymentError(null)
-    try {
-      // Fill in whatever was missing and typed into the modal before acting
-      // on it -- phone for the WhatsApp send, service for the Debt amount --
-      // so the subscriber record itself gets fixed, not just this one action.
-      let sub = paymentSub
-      const patch: { phone?: string | null; service_id?: string; company_id?: string | null } = {}
-      const trimmedPhone = phoneDraft.trim()
-      if (trimmedPhone !== (sub.phone ?? '')) patch.phone = trimmedPhone || null
-      if (paymentMode === 'debt' && !sub.service_id && serviceDraft) {
-        const chosen = services.find((s) => s.id === serviceDraft)
-        patch.service_id = serviceDraft
-        patch.company_id = chosen?.comp_id ?? null
-      }
-      if (Object.keys(patch).length > 0) {
-        const updated = await updateSubscriberFields(sub.id, patch)
-        sub = { ...sub, ...updated }
-        setPaymentSub(sub)
-        setSubscribers((prev) => prev.map((s) => (s.id === sub.id ? { ...s, ...updated } : s)))
-      }
-
-      // The current period's invoice is only ever created here, at the
-      // moment an action is actually being committed -- never just from
-      // opening the modal -- so backing out without confirming anything
-      // never leaves behind a real invoice or turns the subscriber red.
-      let log: MonthlyLogRow | undefined = monthlyLogBySubscriber[sub.id]
-      if (!log && (paymentMode === 'paid' || paymentMode === 'postponed') && sub.service_id) {
-        const service = services.find((s) => s.id === sub.service_id)
-        if (service) {
-          const period = currentPeriodMonth()
-          await createPeriodInvoice(sub.id, sub.service_id, period)
-          const rows = await listMonthlyLog(period)
-          setMonthlyLogBySubscriber(Object.fromEntries(rows.map((row) => [row.subscriber_id, row])))
-          log = rows.find((row) => row.subscriber_id === sub.id)
-        }
-      }
-
-      if (paymentMode === 'paid') {
-        // Re-derive from the freshly (re)fetched log rather than trusting
-        // paymentRemaining from when the modal opened -- if an invoice was
-        // just created above, its real amount_due (custom price +
-        // carried-forward shortfall) can differ from that earlier estimate.
-        const realRemaining = round2(log ? Math.max(log.amount_due - log.amount_paid, 0) : paymentRemaining)
-        if (Number(paymentForm.amount) > realRemaining) {
-          throw new Error(`Amount can't exceed what's left on this invoice (${realRemaining.toFixed(2)}).`)
-        }
-        await createPayment({
-          invoice_id: log?.invoice_id ?? null,
-          subscriber_id: sub.id,
-          collector_id: paymentForm.collector_id || null,
-          amount: Number(paymentForm.amount),
-          payment_date: paymentForm.payment_date,
-          method: paymentForm.method,
-          note: paymentForm.note || null,
-          staff_id: staff?.id ?? null,
-        })
-        logActivity(
-          staff?.id ?? null,
-          `${staff?.username ?? 'Someone'} logged a payment of ${paymentForm.amount} for subscriber ${sub.name}`,
-          'payment',
-          sub.id,
-        )
-        if (notify) openWhatsApp(sub.phone, paidMessage(sub.name))
-      } else if (paymentMode === 'postponed') {
-        if (!log?.invoice_id) throw new Error('No invoice this period to postpone')
-        await postponeInvoice(log.invoice_id, postponeForm.new_due_date, postponeForm.reason || null, staff?.id ?? null)
-        logActivity(
-          staff?.id ?? null,
-          `${staff?.username ?? 'Someone'} postponed the invoice for subscriber ${sub.name} to ${postponeForm.new_due_date}`,
-          'invoice',
-          log.invoice_id,
-        )
-        if (notify) openWhatsApp(sub.phone, postponedMessage(sub.name, postponeForm.new_due_date))
-      } else {
-        if (!sub.service_id) throw new Error('Subscriber has no service to base the debt amount on -- pick one above')
-        const doubled = debtDoubleAmount(sub)
-        await doubleNextMonthInvoice(sub.id, sub.service_id, nextPeriodMonth(currentPeriodMonth()), doubled)
-        logActivity(
-          staff?.id ?? null,
-          `${staff?.username ?? 'Someone'} marked subscriber ${sub.name} as in debt -- next month's payment doubled to ${doubled}`,
-          'subscriber',
-          sub.id,
-        )
-        if (notify) openWhatsApp(sub.phone, debtMessage(sub.name, doubled))
-      }
-      setPaymentSub(null)
-      await refreshBillingData()
-    } catch (err) {
-      setPaymentError(err instanceof Error ? err.message : 'Failed to update subscriber')
-    } finally {
-      setPaymentSaving(false)
-    }
   }
 
   async function handleDelete(sub: SubscriberWithRelations) {
@@ -903,188 +718,14 @@ export function SubscribersListPage() {
         )}
       </div>
 
-      <Modal
-        open={Boolean(paymentSub)}
+      <PaymentModal
+        subscriber={paymentSub}
         onClose={() => setPaymentSub(null)}
-        title={`Update status · ${paymentSub?.name ?? ''}`}
-      >
-        <form onSubmit={submitPayment}>
-          {paymentError && <p className="mb-3 text-sm text-red-600">{paymentError}</p>}
-
-          <div className="mb-4 flex gap-1 rounded-full bg-neutral-100 p-1">
-            {(
-              [
-                { value: 'paid', label: 'Paid', active: 'bg-green-500 text-white' },
-                { value: 'postponed', label: 'Postponed', active: 'bg-orange-500 text-white' },
-                { value: 'debt', label: 'Debt', active: 'bg-red-500 text-white' },
-              ] as const
-            ).map((m) => (
-              <button
-                key={m.value}
-                type="button"
-                onClick={() => setPaymentMode(m.value)}
-                className={`flex-1 rounded-full py-1.5 text-sm font-medium ${
-                  paymentMode === m.value ? m.active : 'text-neutral-600'
-                }`}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-
-          {paymentMode === 'paid' && (
-            <>
-              <p className="mb-4 text-xs text-neutral-500">
-                Logs the payment, turns this subscriber green, and pushes their expiry a month
-                forward so next month is what gets collected next. Use "Save & Notify" below
-                to also send a WhatsApp confirmation.
-              </p>
-              <label className={labelClass}>Amount (max {paymentRemaining.toFixed(2)})</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                max={paymentRemaining}
-                value={paymentForm.amount}
-                onChange={(e) => setPaymentForm((f) => ({ ...f, amount: e.target.value }))}
-                className={`${inputClass} mb-4`}
-                required
-              />
-              <label className={labelClass}>Payment date</label>
-              <input
-                type="date"
-                value={paymentForm.payment_date}
-                onChange={(e) => setPaymentForm((f) => ({ ...f, payment_date: e.target.value }))}
-                className={`${inputClass} mb-4`}
-                required
-              />
-              <label className={labelClass}>Method</label>
-              <input
-                value={paymentForm.method}
-                onChange={(e) => setPaymentForm((f) => ({ ...f, method: e.target.value }))}
-                className={`${inputClass} mb-4`}
-              />
-              <label className={labelClass}>
-                Collector (who actually collected this — may differ from default)
-              </label>
-              <select
-                value={paymentForm.collector_id}
-                onChange={(e) => setPaymentForm((f) => ({ ...f, collector_id: e.target.value }))}
-                className={`${inputClass} mb-4`}
-              >
-                <option value="">None</option>
-                {collectors.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-              <label className={labelClass}>Note</label>
-              <input
-                value={paymentForm.note}
-                onChange={(e) => setPaymentForm((f) => ({ ...f, note: e.target.value }))}
-                className={`${inputClass} mb-4`}
-              />
-            </>
-          )}
-
-          {paymentMode === 'postponed' && (
-            <>
-              <p className="mb-4 text-xs text-neutral-500">
-                Moves this subscriber's expiry to the new date and turns them orange. Use
-                "Save & Notify" below to also send a WhatsApp message.
-              </p>
-              <label className={labelClass}>New due date</label>
-              <input
-                type="date"
-                value={postponeForm.new_due_date}
-                onChange={(e) => setPostponeForm((f) => ({ ...f, new_due_date: e.target.value }))}
-                className={`${inputClass} mb-4`}
-                required
-              />
-              <label className={labelClass}>Reason</label>
-              <input
-                value={postponeForm.reason}
-                onChange={(e) => setPostponeForm((f) => ({ ...f, reason: e.target.value }))}
-                className={`${inputClass} mb-4`}
-              />
-            </>
-          )}
-
-          {paymentMode === 'debt' && (
-            <>
-              {paymentSub && !paymentSub.service_id ? (
-                <>
-                  <p className="mb-3 text-xs text-amber-600">
-                    This subscriber has no service assigned yet, so there's no rate to double.
-                    Pick one to use for the debt penalty (saved to the subscriber).
-                  </p>
-                  <label className={labelClass}>Service</label>
-                  <select
-                    value={serviceDraft}
-                    onChange={(e) => setServiceDraft(e.target.value)}
-                    className={`${inputClass} mb-4`}
-                    required
-                  >
-                    <option value="">Select a service…</option>
-                    {services.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} ({s.companies?.name ?? 'no company'})
-                      </option>
-                    ))}
-                  </select>
-                </>
-              ) : (
-                <p className="mb-4 text-xs text-neutral-500">
-                  Turns this subscriber red and sets next month's payment to double
-                  {paymentSub ? ` (${debtDoubleAmount(paymentSub)})` : ''} as a late-payment
-                  penalty. It reverts to the normal amount automatically once that doubled
-                  invoice is paid. Use "Save & Notify" below to also send a WhatsApp message.
-                </p>
-              )}
-            </>
-          )}
-
-          {!paymentSub?.phone && (
-            <div className="mb-4 rounded-xl bg-neutral-50 p-3 dark:bg-neutral-900">
-              <label className={labelClass}>
-                Phone number (missing — add it to enable "Save & Notify")
-              </label>
-              <input
-                type="tel"
-                value={phoneDraft}
-                onChange={(e) => setPhoneDraft(e.target.value)}
-                placeholder="e.g. 03123456"
-                className={inputClass}
-              />
-            </div>
-          )}
-
-          <div className="flex flex-wrap justify-end gap-2">
-            <button type="button" onClick={() => setPaymentSub(null)} className={secondaryButtonClass}>
-              Cancel
-            </button>
-            <button
-              type="submit"
-              name="intent"
-              value="save"
-              disabled={paymentSaving}
-              className={secondaryButtonClass}
-            >
-              {paymentSaving ? 'Saving…' : 'Save'}
-            </button>
-            <button
-              type="submit"
-              name="intent"
-              value="notify"
-              disabled={paymentSaving || (!phoneDraft.trim() && !paymentSub?.phone)}
-              className={primaryButtonClass}
-            >
-              {paymentSaving ? 'Saving…' : 'Save & Notify'}
-            </button>
-          </div>
-        </form>
-      </Modal>
+        onChanged={refreshBillingData}
+        services={services}
+        collectors={collectors}
+        monthlyLog={paymentSub ? monthlyLogBySubscriber[paymentSub.id] : undefined}
+      />
     </div>
   )
 }
