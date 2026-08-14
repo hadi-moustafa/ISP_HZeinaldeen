@@ -210,16 +210,20 @@ export function DashboardPage() {
               {/* Dense stat grid */}
               <div className="mb-4 grid grid-cols-2 gap-2">
                 <div className={cardClass}>
+                  <p className="text-xl font-bold text-neutral-900">{summary.totalDue.toFixed(2)}</p>
+                  <p className="text-xs text-neutral-500">Total amount</p>
+                </div>
+                <div className={cardClass}>
+                  <p className="text-xl font-bold text-rose-600">{summary.totalLeft.toFixed(2)}</p>
+                  <p className="text-xs text-neutral-500">Left to collect</p>
+                </div>
+                <div className={cardClass}>
                   <p className="text-xl font-bold text-neutral-900">{summary.totalSubscribers}</p>
                   <p className="text-xs text-neutral-500">Total subscribers</p>
                 </div>
                 <div className={cardClass}>
                   <p className="text-xl font-bold text-red-600">{summary.totalDebtSubscribers}</p>
                   <p className="text-xs text-neutral-500">Subscribers in debt</p>
-                </div>
-                <div className={cardClass}>
-                  <p className="text-xl font-bold text-neutral-900">{summary.totalSoldServices}</p>
-                  <p className="text-xs text-neutral-500">Total sold services</p>
                 </div>
                 <div className={cardClass}>
                   <p className="text-xl font-bold text-emerald-600">{summary.paidUsers}</p>

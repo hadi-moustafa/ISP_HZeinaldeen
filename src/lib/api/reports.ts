@@ -28,7 +28,6 @@ export interface DashboardSummary {
   totalPaid: number
   totalLeft: number
   totalDebtSubscribers: number
-  totalSoldServices: number
   paidUsers: number
   unpaidUsers: number
   totalSoldProducts: number
@@ -46,11 +45,12 @@ export interface DashboardSummary {
 // unpaid/partial invoice, any period) so "in debt" means the same thing
 // here as it does on the subscriber list's Debt filter chip.
 //
-// paidUsers/unpaidUsers are counted only among subscribers that already
-// have a monthly_log row this period (a subscriber with no invoice yet
-// isn't "unpaid", it just hasn't been billed) -- paid/waived count as
-// paid, everything else (unpaid/partial/postponed) counts as unpaid, same
-// split billingKeyFor() uses on the subscriber list.
+// paidUsers is counted among subscribers that already have a monthly_log
+// row this period -- paid/waived count as paid, same split billingKeyFor()
+// uses on the subscriber list. unpaidUsers is everyone else (total
+// subscribers minus paid), explicit client definition -- so it also
+// captures subscribers not yet billed this period, not just
+// unpaid/partial/postponed invoice rows.
 //
 // totalSoldProducts/totalPaymentsProducts only look at this month's 'sale'
 // movements. Movements marked payment_status='partial' are excluded from
@@ -92,7 +92,7 @@ export async function getDashboardSummary(periodMonth: string): Promise<Dashboar
   const totalPaid = logRows.reduce((sum, r) => sum + r.amount_paid, 0)
 
   const paidUsers = logRows.filter((r) => r.status === 'paid' || r.status === 'waived').length
-  const unpaidUsers = logRows.length - paidUsers
+  const unpaidUsers = (countRes.count ?? 0) - paidUsers
 
   const saleMovements = saleMovementsRes.data as unknown as {
     quantity: number
@@ -110,7 +110,6 @@ export async function getDashboardSummary(periodMonth: string): Promise<Dashboar
     totalPaid,
     totalLeft: Math.max(totalDue - totalPaid, 0),
     totalDebtSubscribers: debtIds.size,
-    totalSoldServices: expectedRows.length,
     paidUsers,
     unpaidUsers,
     totalSoldProducts,
