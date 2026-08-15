@@ -505,22 +505,22 @@ export function DashboardPage() {
 
           {summary && (
             <>
-              {/* Total collected this period, total amount, and left to collect together */}
-              <div className={`${cardClass} mb-3`}>
-                <p className="text-xs text-neutral-500">Total collected this period</p>
-                <p className="text-3xl font-bold text-emerald-600">{summary.totalPaymentsCollected.toFixed(2)}</p>
-                <p className="mb-3 mt-1 text-xs text-neutral-500">
-                  Services {summary.totalPaid.toFixed(2)} · Products {summary.totalPaymentsProducts.toFixed(2)}
-                </p>
-                <div className="grid grid-cols-2 gap-2 border-t border-neutral-100 pt-3">
-                  <div>
-                    <p className="text-lg font-bold text-neutral-900">{summary.totalDue.toFixed(2)}</p>
-                    <p className="text-xs text-neutral-500">Total amount</p>
-                  </div>
-                  <div>
-                    <p className="text-lg font-bold text-rose-600">{summary.totalLeft.toFixed(2)}</p>
-                    <p className="text-xs text-neutral-500">Left to collect</p>
-                  </div>
+              {/* Total collected this period, total amount, and left to collect together, horizontally */}
+              <div className={`${cardClass} mb-3 grid grid-cols-3 gap-2 text-center`}>
+                <div>
+                  <p className="text-lg font-bold text-emerald-600">{summary.totalPaymentsCollected.toFixed(2)}</p>
+                  <p className="text-xs text-neutral-500">Collected this period</p>
+                  <p className="mt-0.5 text-[10px] text-neutral-400">
+                    Svc {summary.totalPaid.toFixed(2)} · Prod {summary.totalPaymentsProducts.toFixed(2)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-lg font-bold text-neutral-900">{summary.totalDue.toFixed(2)}</p>
+                  <p className="text-xs text-neutral-500">Total amount</p>
+                </div>
+                <div>
+                  <p className="text-lg font-bold text-rose-600">{summary.totalLeft.toFixed(2)}</p>
+                  <p className="text-xs text-neutral-500">Left to collect</p>
                 </div>
               </div>
 
