@@ -11,6 +11,12 @@ export interface MonthlyLogRow {
   postponed_to: string | null
   invoice_id: string
   collected_at: string | null
+  service_id: string | null
+  company_id: string | null
+  service_name: string | null
+  company_name: string | null
+  owner_id: string | null
+  collector_id: string | null
 }
 
 export interface MonthlyFinancialRow {
