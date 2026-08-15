@@ -85,6 +85,7 @@ export function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [expiryWatch, setExpiryWatch] = useState<ExpiryBucket[] | null>(null)
   const [collectedDays, setCollectedDays] = useState(5)
+  const [collectionToday, setCollectionToday] = useState<CollectionRangeTotal | null>(null)
   const [collectionTotal, setCollectionTotal] = useState<CollectionRangeTotal | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -114,6 +115,9 @@ export function DashboardPage() {
     getExpiryWatch()
       .then(setExpiryWatch)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load expiry watch'))
+    getCollectionTotal(1)
+      .then(setCollectionToday)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load today\'s collected total'))
     getCollectionTotal(collectedDays)
       .then(setCollectionTotal)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load collected total'))
@@ -575,8 +579,8 @@ export function DashboardPage() {
 
           {!summary && !error && <p className="mb-3 text-sm text-neutral-500">Loading…</p>}
 
-          {/* Collected -- cumulative total over an admin-selectable day range, in steps of 5 up to 30 */}
-          {collectionTotal && (
+          {/* Collected -- today, plus a cumulative total over an admin-selectable day range */}
+          {collectionToday && collectionTotal && (
             <ForecastCard
               title="Collected"
               headerRight={
@@ -593,14 +597,23 @@ export function DashboardPage() {
                 </select>
               }
             >
-              <div className="rounded-xl bg-neutral-50 px-3 py-3">
-                <p className="text-2xl font-bold text-emerald-600">
-                  {collectionTotal.count}{' '}
-                  <span className="text-sm font-medium text-neutral-400">· ${collectionTotal.amount.toFixed(0)}</span>
-                </p>
-                <p className="text-xs text-neutral-500">
-                  subscribers collected from in the last {collectionTotal.days} day{collectionTotal.days > 1 ? 's' : ''}
-                </p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-xl bg-neutral-50 px-3 py-3">
+                  <p className="text-2xl font-bold text-emerald-600">
+                    {collectionToday.count}{' '}
+                    <span className="text-sm font-medium text-neutral-400">· ${collectionToday.amount.toFixed(0)}</span>
+                  </p>
+                  <p className="text-xs text-neutral-500">subscribers collected from today</p>
+                </div>
+                <div className="rounded-xl bg-neutral-50 px-3 py-3">
+                  <p className="text-2xl font-bold text-emerald-600">
+                    {collectionTotal.count}{' '}
+                    <span className="text-sm font-medium text-neutral-400">· ${collectionTotal.amount.toFixed(0)}</span>
+                  </p>
+                  <p className="text-xs text-neutral-500">
+                    in the last {collectionTotal.days} day{collectionTotal.days > 1 ? 's' : ''}
+                  </p>
+                </div>
               </div>
             </ForecastCard>
           )}
