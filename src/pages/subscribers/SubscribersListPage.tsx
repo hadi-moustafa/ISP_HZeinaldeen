@@ -13,14 +13,14 @@ import { listOwners } from '../../lib/api/owners'
 import { listCollectors } from '../../lib/api/collectors'
 import { listCompanies } from '../../lib/api/companies'
 import { listServices } from '../../lib/api/services'
-import { listRegions } from '../../lib/api/regions'
+import { listAddresses } from '../../lib/api/addresses'
 import { listMonthlyLog } from '../../lib/api/reports'
 import { logActivity } from '../../lib/api/activityLog'
 import type { SubscriberWithRelations } from '../../types/subscribers'
 import { emptyFilters } from '../../types/subscribers'
 import { FILTER_FIELDS, TEXT_FILTER_FIELDS, type FilterField } from '../../lib/subscriberFilterFields'
 import type { MonthlyLogRow } from '../../types/reports'
-import type { Owner, Collector, Company, ServiceWithCompany, Region } from '../../types/reference'
+import type { Owner, Collector, Company, ServiceWithCompany, Address } from '../../types/reference'
 import { useStaff } from '../../context/StaffContext'
 import { HeaderActions } from '../../components/AppHeader'
 import { PaymentModal } from '../../components/subscriber/PaymentModal'
@@ -112,7 +112,7 @@ export function SubscribersListPage() {
   const [collectors, setCollectors] = useState<Collector[]>([])
   const [companies, setCompanies] = useState<Company[]>([])
   const [services, setServices] = useState<ServiceWithCompany[]>([])
-  const [regions, setRegions] = useState<Region[]>([])
+  const [addresses, setAddresses] = useState<Address[]>([])
   const [debtIds, setDebtIds] = useState<Set<string>>(new Set())
   const [monthlyLogBySubscriber, setMonthlyLogBySubscriber] = useState<Record<string, MonthlyLogRow>>({})
 
@@ -123,13 +123,13 @@ export function SubscribersListPage() {
   }
 
   useEffect(() => {
-    Promise.all([listOwners(), listCollectors(), listCompanies(), listServices(), listRegions(), refreshBillingData()])
-      .then(([o, c, comp, s, r]) => {
+    Promise.all([listOwners(), listCollectors(), listCompanies(), listServices(), listAddresses(), refreshBillingData()])
+      .then(([o, c, comp, s, addrs]) => {
         setOwners(o)
         setCollectors(c)
         setCompanies(comp)
         setServices(s)
-        setRegions(r)
+        setAddresses(addrs)
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load filters'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -226,7 +226,7 @@ export function SubscribersListPage() {
         return {
           Name: s.name,
           Phone: s.phone ?? '',
-          Address: [s.address, s.regions?.name].filter(Boolean).join(', '),
+          Address: [s.addresses?.name, s.building].filter(Boolean).join(', '),
           Service: s.services?.name ?? '',
           Company: s.services?.companies?.name ?? '',
           Owner: s.owners?.name ?? '',
@@ -408,16 +408,16 @@ export function SubscribersListPage() {
             </select>
           )}
 
-          {filterField === 'region' && (
+          {filterField === 'address' && (
             <select
-              value={filters.regionId}
-              onChange={(e) => updateFilter('regionId', e.target.value)}
+              value={filters.addressId}
+              onChange={(e) => updateFilter('addressId', e.target.value)}
               className="flex-1 rounded-full bg-white px-3 py-2.5 text-sm text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100"
             >
-              <option value="">Any region</option>
-              {regions.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
+              <option value="">Any address</option>
+              {addresses.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
                 </option>
               ))}
             </select>
@@ -574,7 +574,7 @@ export function SubscribersListPage() {
           const billingKey = billingKeyFor(log?.status, sub.debt)
           const style = BILLING_STYLES[billingKey]
           const pct = log && log.amount_due > 0 ? Math.round((log.amount_paid / log.amount_due) * 100) : 0
-          const addressLine = [sub.address, sub.regions?.name].filter(Boolean).join(', ')
+          const addressLine = [sub.addresses?.name, sub.building].filter(Boolean).join(', ')
 
           return (
             <div

@@ -12,7 +12,7 @@ export type FilterField =
   | 'collector'
   | 'company'
   | 'service'
-  | 'region'
+  | 'address'
   | 'status'
   | 'expiry'
   | 'connection'
@@ -28,7 +28,7 @@ export const FILTER_FIELDS: { value: FilterField; label: string }[] = [
   { value: 'collector', label: 'Collector' },
   { value: 'company', label: 'Company' },
   { value: 'service', label: 'Service' },
-  { value: 'region', label: 'Region' },
+  { value: 'address', label: 'Address' },
   { value: 'status', label: 'Connection status' },
   { value: 'expiry', label: 'Expiry date' },
   { value: 'connection', label: 'Connection date' },

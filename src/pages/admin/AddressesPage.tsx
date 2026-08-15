@@ -1,37 +1,30 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { listRegions, createRegion, updateRegion, deleteRegion } from '../../lib/api/regions'
-import type { Region } from '../../types/reference'
+import { listAddresses, createAddress, updateAddress, deleteAddress } from '../../lib/api/addresses'
+import type { Address } from '../../types/reference'
 import { logActivity } from '../../lib/api/activityLog'
 import { useStaff } from '../../context/StaffContext'
 import { Modal } from '../../components/Modal'
-import {
-  inputClass,
-  labelClass,
-  primaryButtonClass,
-  secondaryButtonClass,
-  dangerButtonClass,
-  cardClass,
-} from '../../lib/uiClasses'
+import { inputClass, primaryButtonClass, secondaryButtonClass, dangerButtonClass, cardClass } from '../../lib/uiClasses'
 
 const emptyForm = { name: '', is_active: true }
 
-export function RegionsPage() {
+export function AddressesPage() {
   const { staff } = useStaff()
-  const [regions, setRegions] = useState<Region[]>([])
+  const [addresses, setAddresses] = useState<Address[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const [modalOpen, setModalOpen] = useState(false)
-  const [editing, setEditing] = useState<Region | null>(null)
+  const [editing, setEditing] = useState<Address | null>(null)
   const [form, setForm] = useState(emptyForm)
 
   async function refresh() {
     setLoading(true)
     setError(null)
     try {
-      setRegions(await listRegions())
+      setAddresses(await listAddresses())
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load regions')
+      setError(err instanceof Error ? err.message : 'Failed to load addresses')
     } finally {
       setLoading(false)
     }
@@ -47,9 +40,9 @@ export function RegionsPage() {
     setModalOpen(true)
   }
 
-  function openEdit(region: Region) {
-    setEditing(region)
-    setForm({ name: region.name, is_active: region.is_active })
+  function openEdit(address: Address) {
+    setEditing(address)
+    setForm({ name: address.name, is_active: address.is_active })
     setModalOpen(true)
   }
 
@@ -58,36 +51,36 @@ export function RegionsPage() {
     const input = { name: form.name, is_active: form.is_active }
     try {
       if (editing) {
-        await updateRegion(editing.id, input)
-        logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} edited region ${input.name}`, 'region', editing.id)
+        await updateAddress(editing.id, input)
+        logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} edited address ${input.name}`, 'address', editing.id)
       } else {
-        const created = await createRegion(input)
-        logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} created region ${input.name}`, 'region', created.id)
+        const created = await createAddress(input)
+        logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} created address ${input.name}`, 'address', created.id)
       }
       setModalOpen(false)
       await refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save region')
+      setError(err instanceof Error ? err.message : 'Failed to save address')
     }
   }
 
-  async function remove(region: Region) {
-    if (!confirm(`Delete region "${region.name}"?`)) return
+  async function remove(address: Address) {
+    if (!confirm(`Delete address "${address.name}"?`)) return
     try {
-      await deleteRegion(region.id)
-      logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} deleted region ${region.name}`, 'region', region.id)
+      await deleteAddress(address.id)
+      logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} deleted address ${address.name}`, 'address', address.id)
       await refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete region')
+      setError(err instanceof Error ? err.message : 'Failed to delete address')
     }
   }
 
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Regions</h1>
+        <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Addresses</h1>
         <button onClick={openCreate} className={primaryButtonClass}>
-          + New region
+          + New address
         </button>
       </div>
 
@@ -95,39 +88,39 @@ export function RegionsPage() {
       {loading && <p className="text-neutral-500 dark:text-neutral-400">Loading…</p>}
 
       <div className="space-y-3">
-        {regions.map((region) => (
-          <div key={region.id} className={cardClass}>
+        {addresses.map((address) => (
+          <div key={address.id} className={cardClass}>
             <div className="flex items-start justify-between">
               <p className="font-medium text-neutral-900 dark:text-neutral-100">
-                {region.name}
-                {!region.is_active && (
+                {address.name}
+                {!address.is_active && (
                   <span className="ml-2 rounded bg-neutral-200 px-1.5 py-0.5 text-xs text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300">
                     inactive
                   </span>
                 )}
               </p>
               <div className="flex gap-2">
-                <button onClick={() => openEdit(region)} className={secondaryButtonClass}>
+                <button onClick={() => openEdit(address)} className={secondaryButtonClass}>
                   Edit
                 </button>
-                <button onClick={() => remove(region)} className={dangerButtonClass}>
+                <button onClick={() => remove(address)} className={dangerButtonClass}>
                   Delete
                 </button>
               </div>
             </div>
           </div>
         ))}
-        {!loading && regions.length === 0 && (
-          <p className="text-neutral-500 dark:text-neutral-400">No regions yet.</p>
+        {!loading && addresses.length === 0 && (
+          <p className="text-neutral-500 dark:text-neutral-400">No addresses yet.</p>
         )}
       </div>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit region' : 'New region'}>
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit address' : 'New address'}>
         <form onSubmit={submit}>
-          <label className={labelClass}>Name</label>
           <input
             value={form.name}
             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            placeholder="Name"
             className={`${inputClass} mb-4`}
             required
           />

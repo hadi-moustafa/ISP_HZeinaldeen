@@ -140,8 +140,8 @@ export function SubscriberDetailPage() {
             <dd className="text-neutral-900 dark:text-neutral-100">{subscriber.address ?? '—'}</dd>
           </div>
           <div>
-            <dt className="text-neutral-500 dark:text-neutral-400">Region</dt>
-            <dd className="text-neutral-900 dark:text-neutral-100">{subscriber.regions?.name ?? '—'}</dd>
+            <dt className="text-neutral-500 dark:text-neutral-400">Address</dt>
+            <dd className="text-neutral-900 dark:text-neutral-100">{subscriber.addresses?.name ?? '—'}</dd>
           </div>
           <div>
             <dt className="text-neutral-500 dark:text-neutral-400">Building</dt>

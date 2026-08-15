@@ -349,7 +349,7 @@ export function PaymentModal({
                   <option value="">Select a service…</option>
                   {services.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name} ({s.companies?.name ?? 'no company'})
+                      {s.name}
                     </option>
                   ))}
                 </select>

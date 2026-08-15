@@ -1,21 +1,20 @@
 import { useEffect, useState } from 'react'
 import { listSubscribersWithMissingData, updateSubscriberFields } from '../../lib/api/subscribers'
-import { listRegions } from '../../lib/api/regions'
+import { listAddresses } from '../../lib/api/addresses'
 import { logActivity } from '../../lib/api/activityLog'
 import { useStaff } from '../../context/StaffContext'
 import type { SubscriberWithRelations } from '../../types/subscribers'
-import type { Region } from '../../types/reference'
+import type { Address } from '../../types/reference'
 import { inputClass, labelClass, primaryButtonClass, cardClass } from '../../lib/uiClasses'
 
 // Which fields count as "missing" for this page -- kept in sync with the
 // .or(...) filter in listSubscribersWithMissingData().
-const MISSING_FIELDS = ['phone', 'address', 'region_id', 'nationality', 'building'] as const
+const MISSING_FIELDS = ['phone', 'address_id', 'nationality', 'building'] as const
 type MissingField = (typeof MISSING_FIELDS)[number]
 
 type DraftValues = {
   phone: string
-  address: string
-  region_id: string
+  address_id: string
   nationality: string
   building: string
 }
@@ -23,8 +22,7 @@ type DraftValues = {
 function draftFor(sub: SubscriberWithRelations): DraftValues {
   return {
     phone: sub.phone ?? '',
-    address: sub.address ?? '',
-    region_id: sub.region_id ?? '',
+    address_id: sub.address_id ?? '',
     nationality: sub.nationality ?? '',
     building: sub.building ?? '',
   }
@@ -39,8 +37,7 @@ function missingFieldsFor(sub: SubscriberWithRelations): MissingField[] {
 
 const FIELD_LABELS: Record<MissingField, string> = {
   phone: 'Phone',
-  address: 'Address',
-  region_id: 'Region',
+  address_id: 'Address',
   nationality: 'Nationality',
   building: 'Building',
 }
@@ -48,7 +45,7 @@ const FIELD_LABELS: Record<MissingField, string> = {
 export function MissingDataPage() {
   const { staff } = useStaff()
   const [subscribers, setSubscribers] = useState<SubscriberWithRelations[]>([])
-  const [regions, setRegions] = useState<Region[]>([])
+  const [addresses, setAddresses] = useState<Address[]>([])
   const [drafts, setDrafts] = useState<Record<string, DraftValues>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -58,9 +55,9 @@ export function MissingDataPage() {
     setLoading(true)
     setError(null)
     try {
-      const [subs, regs] = await Promise.all([listSubscribersWithMissingData(), listRegions()])
+      const [subs, addrs] = await Promise.all([listSubscribersWithMissingData(), listAddresses()])
       setSubscribers(subs)
-      setRegions(regs)
+      setAddresses(addrs)
       setDrafts(Object.fromEntries(subs.map((s) => [s.id, draftFor(s)])))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load subscribers')
@@ -85,8 +82,7 @@ export function MissingDataPage() {
     try {
       await updateSubscriberFields(sub.id, {
         phone: draft.phone.trim() || null,
-        address: draft.address.trim() || null,
-        region_id: draft.region_id || null,
+        address_id: draft.address_id || null,
         nationality: (draft.nationality || null) as SubscriberWithRelations['nationality'],
         building: draft.building.trim() || null,
       })
@@ -105,7 +101,7 @@ export function MissingDataPage() {
         Subscribers with missing data
       </h1>
       <p className="mb-4 text-sm text-neutral-600 dark:text-neutral-300">
-        Subscribers missing a phone, address, region, nationality, or building — commonly sparse in
+        Subscribers missing a phone, address, nationality, or building — commonly sparse in
         Excel imports. Fill in what you have; a subscriber drops off this list once everything here
         is filled in.
       </p>
@@ -115,7 +111,7 @@ export function MissingDataPage() {
 
       {!loading && subscribers.length === 0 && (
         <p className={`${cardClass} text-sm text-neutral-500 dark:text-neutral-400`}>
-          Nothing missing — every subscriber has a phone, address, region, nationality, and building.
+          Nothing missing — every subscriber has a phone, address, nationality, and building.
         </p>
       )}
 
@@ -144,28 +140,18 @@ export function MissingDataPage() {
                     />
                   </div>
                 )}
-                {missing.includes('address') && (
+                {missing.includes('address_id') && (
                   <div>
                     <label className={labelClass}>Address</label>
-                    <input
-                      value={draft.address}
-                      onChange={(e) => updateDraft(sub.id, { address: e.target.value })}
-                      className={inputClass}
-                    />
-                  </div>
-                )}
-                {missing.includes('region_id') && (
-                  <div>
-                    <label className={labelClass}>Region</label>
                     <select
-                      value={draft.region_id}
-                      onChange={(e) => updateDraft(sub.id, { region_id: e.target.value })}
+                      value={draft.address_id}
+                      onChange={(e) => updateDraft(sub.id, { address_id: e.target.value })}
                       className={inputClass}
                     >
-                      <option value="">Select a region…</option>
-                      {regions.map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.name}
+                      <option value="">Select an address…</option>
+                      {addresses.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
                         </option>
                       ))}
                     </select>

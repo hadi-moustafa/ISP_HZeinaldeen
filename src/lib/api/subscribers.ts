@@ -6,7 +6,7 @@ const SUBSCRIBER_SELECT = `
   owners(name),
   default_collector:collectors!default_collector_id(name),
   services(name, sell_price, paid_price, companies(name)),
-  regions(name),
+  addresses(name),
   company:companies!company_id(name)
 `
 
@@ -45,7 +45,7 @@ export async function listSubscribers(
 
   if (filters.ownerId) query = query.eq('owner_id', filters.ownerId)
   if (filters.collectorId) query = query.eq('default_collector_id', filters.collectorId)
-  if (filters.regionId) query = query.eq('region_id', filters.regionId)
+  if (filters.addressId) query = query.eq('address_id', filters.addressId)
   if (filters.serviceId) {
     query = query.eq('service_id', filters.serviceId)
   } else if (serviceIdsForCompany) {
@@ -81,14 +81,14 @@ export async function listSubscribers(
 }
 
 // Subscribers missing at least one commonly-blank field from the Excel
-// import (phone, address, region, nationality, building) -- surfaced so an
+// import (phone, address, nationality, building) -- surfaced so an
 // admin can walk down the list and fill gaps in real data rather than
 // hunting for them one profile at a time.
 export async function listSubscribersWithMissingData() {
   const { data, error } = await supabase
     .from('subscribers')
     .select(SUBSCRIBER_SELECT)
-    .or('phone.is.null,address.is.null,region_id.is.null,nationality.is.null,building.is.null')
+    .or('phone.is.null,address_id.is.null,nationality.is.null,building.is.null')
     .order('name')
   if (error) throw error
   return data as unknown as SubscriberWithRelations[]
@@ -159,11 +159,11 @@ export async function listDebtSubscriberIds(): Promise<Set<string>> {
 
 export interface SubscriberInput {
   name: string
+  external_username: string
   phone: string | null
   nationality: Subscriber['nationality']
-  address: string | null
   building: string | null
-  region_id: string | null
+  address_id: string | null
   service_id: string | null
   company_id: string | null
   owner_id: string | null

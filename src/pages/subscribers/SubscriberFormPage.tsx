@@ -10,25 +10,44 @@ import { listOwners } from '../../lib/api/owners'
 import { listCollectors } from '../../lib/api/collectors'
 import { listServices } from '../../lib/api/services'
 import { listCompanies } from '../../lib/api/companies'
-import { listRegions } from '../../lib/api/regions'
+import { listAddresses } from '../../lib/api/addresses'
 import { createPeriodInvoice } from '../../lib/api/invoices'
 import { logActivity } from '../../lib/api/activityLog'
 import { useStaff } from '../../context/StaffContext'
-import type { Owner, Collector, ServiceWithCompany, Region, Company } from '../../types/reference'
-import { inputClass, labelClass, primaryButtonClass, secondaryButtonClass } from '../../lib/uiClasses'
+import type { Owner, Collector, ServiceWithCompany, Address, Company } from '../../types/reference'
+import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../lib/uiClasses'
 
 function currentPeriodMonth() {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
 }
 
+function localDateString(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+// Adds one month, clamped to the target month's last day -- plain `Date`
+// month arithmetic doesn't clamp (Jan 31 + 1 month rolls into March, not
+// Feb 28), the same gotcha already solved server-side for auto-renewal in
+// 0010_auto_renew_on_paid.sql.
+function addOneMonthClamped(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const targetMonthFirst = new Date(y, m, 1) // m is already "next month" (0-indexed this month + 1)
+  const lastDayOfTargetMonth = new Date(targetMonthFirst.getFullYear(), targetMonthFirst.getMonth() + 1, 0).getDate()
+  const clampedDay = Math.min(d, lastDayOfTargetMonth)
+  return localDateString(new Date(targetMonthFirst.getFullYear(), targetMonthFirst.getMonth(), clampedDay))
+}
+
 const emptyForm: SubscriberInput = {
   name: '',
+  external_username: '',
   phone: '',
   nationality: null,
-  address: '',
   building: '',
-  region_id: '',
+  address_id: '',
   service_id: '',
   company_id: '',
   owner_id: '',
@@ -54,26 +73,35 @@ export function SubscriberFormPage() {
   const [collectors, setCollectors] = useState<Collector[]>([])
   const [services, setServices] = useState<ServiceWithCompany[]>([])
   const [companies, setCompanies] = useState<Company[]>([])
-  const [regions, setRegions] = useState<Region[]>([])
+  const [addresses, setAddresses] = useState<Address[]>([])
   const [form, setForm] = useState<SubscriberInput>(emptyForm)
   const [loading, setLoading] = useState(isEdit)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Expiry date auto-follows connection date + 1 month until the admin
+  // manually edits expiry themselves -- then it stops auto-following.
+  const [expiryTouched, setExpiryTouched] = useState(false)
+
   useEffect(() => {
-    Promise.all([listOwners(), listCollectors(), listServices(), listCompanies(), listRegions()])
-      .then(([o, c, s, comp, r]) => {
+    Promise.all([listOwners(), listCollectors(), listServices(), listCompanies(), listAddresses()])
+      .then(([o, c, s, comp, addrs]) => {
         setOwners(o)
         setCollectors(c)
         setServices(s)
         setCompanies(comp)
-        setRegions(r)
-        // New subscribers default to collector "hussien" -- client-specified
-        // default. Only applies on create; editing an existing subscriber
-        // never overwrites their already-set collector.
+        setAddresses(addrs)
         if (!isEdit) {
-          const hussien = c.find((col) => col.name.toLowerCase() === 'hussien')
-          if (hussien) setForm((f) => ({ ...f, default_collector_id: hussien.id }))
+          // Collector defaults to whoever is logged in, when they're a
+          // collector account (has a linked collector_id) -- admin logins
+          // have no personal collector, so it stays a manual optional pick.
+          const today = localDateString(new Date())
+          setForm((f) => ({
+            ...f,
+            default_collector_id: staff?.collectorId ?? '',
+            connection_date: today,
+            expiry_date: addOneMonthClamped(today),
+          }))
         }
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load form data'))
@@ -90,11 +118,11 @@ export function SubscriberFormPage() {
       .then((sub) => {
         setForm({
           name: sub.name,
+          external_username: sub.external_username ?? '',
           phone: sub.phone ?? '',
           nationality: sub.nationality,
-          address: sub.address ?? '',
           building: sub.building ?? '',
-          region_id: sub.region_id ?? '',
+          address_id: sub.address_id ?? '',
           service_id: sub.service_id ?? '',
           company_id: sub.company_id ?? '',
           owner_id: sub.owner_id ?? '',
@@ -118,17 +146,33 @@ export function SubscriberFormPage() {
     setForm((f) => ({ ...f, [key]: value }))
   }
 
+  function updateConnectionDate(value: string) {
+    setForm((f) => ({
+      ...f,
+      connection_date: value,
+      expiry_date: !isEdit && !expiryTouched && value ? addOneMonthClamped(value) : f.expiry_date,
+    }))
+  }
+
+  function updateExpiryDate(value: string) {
+    setExpiryTouched(true)
+    update('expiry_date', value)
+  }
+
   async function submit(e: FormEvent) {
     e.preventDefault()
+    if (!form.company_id || !form.service_id || !form.address_id || !form.owner_id) {
+      setError('Name, username, phone, company, service, address, building, and owner are all required.')
+      return
+    }
     setSaving(true)
     setError(null)
     const input: SubscriberInput = {
       ...form,
       phone: form.phone || null,
       nationality: form.nationality || null,
-      address: form.address || null,
       building: form.building || null,
-      region_id: form.region_id || null,
+      address_id: form.address_id || null,
       service_id: form.service_id || null,
       company_id: form.company_id || null,
       owner_id: form.owner_id || null,
@@ -175,262 +219,219 @@ export function SubscriberFormPage() {
       {error && <p className="mb-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       <form onSubmit={submit} className="space-y-4">
-        <div>
-          <label className={labelClass}>Name</label>
+        <div className="grid grid-cols-2 gap-3">
           <input
             value={form.name}
             onChange={(e) => update('name', e.target.value)}
+            placeholder="Name"
+            className={inputClass}
+            required
+          />
+          <input
+            value={form.external_username}
+            onChange={(e) => update('external_username', e.target.value)}
+            placeholder="Username"
             className={inputClass}
             required
           />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={labelClass}>Phone</label>
-            <input
-              value={form.phone ?? ''}
-              onChange={(e) => update('phone', e.target.value)}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className={labelClass}>Nationality</label>
-            <select
-              value={form.nationality ?? ''}
-              onChange={(e) => update('nationality', (e.target.value || null) as SubscriberInput['nationality'])}
-              className={inputClass}
-            >
-              <option value="">None</option>
-              <option value="Lebanese">Lebanese</option>
-              <option value="Syrian">Syrian</option>
-            </select>
-          </div>
+          <input
+            value={form.phone ?? ''}
+            onChange={(e) => update('phone', e.target.value)}
+            placeholder="Phone"
+            className={inputClass}
+            required
+          />
+          <select
+            value={form.nationality ?? ''}
+            onChange={(e) => update('nationality', (e.target.value || null) as SubscriberInput['nationality'])}
+            className={inputClass}
+          >
+            <option value="">Nationality</option>
+            <option value="Lebanese">Lebanese</option>
+            <option value="Syrian">Syrian</option>
+          </select>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={labelClass}>Address</label>
-            <input
-              value={form.address ?? ''}
-              onChange={(e) => update('address', e.target.value)}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className={labelClass}>Building</label>
-            <input
-              value={form.building ?? ''}
-              onChange={(e) => update('building', e.target.value)}
-              className={inputClass}
-            />
-          </div>
+          <select
+            value={form.address_id ?? ''}
+            onChange={(e) => update('address_id', e.target.value)}
+            className={inputClass}
+            required
+          >
+            <option value="">Address</option>
+            {addresses.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+          <input
+            value={form.building ?? ''}
+            onChange={(e) => update('building', e.target.value)}
+            placeholder="Building"
+            className={inputClass}
+            required
+          />
         </div>
 
-        <div>
-          <label className={labelClass}>Region</label>
+        <div className="grid grid-cols-2 gap-3">
           <select
-            value={form.region_id ?? ''}
-            onChange={(e) => update('region_id', e.target.value)}
+            value={form.company_id ?? ''}
+            onChange={(e) => {
+              const company_id = e.target.value
+              // Clear the service if it no longer belongs to the newly
+              // chosen company.
+              setForm((f) => {
+                const stillValid = services.find((s) => s.id === f.service_id)?.comp_id === company_id
+                return { ...f, company_id, service_id: stillValid || !company_id ? f.service_id : '' }
+              })
+            }}
             className={inputClass}
+            required
           >
-            <option value="">None</option>
-            {regions.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
+            <option value="">Company</option>
+            {companies.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={form.service_id ?? ''}
+            onChange={(e) => update('service_id', e.target.value)}
+            className={inputClass}
+            disabled={!form.company_id}
+            required
+          >
+            <option value="">{form.company_id ? 'Service' : 'Select a company first'}</option>
+            {filteredServices.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
               </option>
             ))}
           </select>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={labelClass}>Company</label>
-            <select
-              value={form.company_id ?? ''}
-              onChange={(e) => {
-                const company_id = e.target.value
-                update('company_id', company_id)
-                // Clear the service if it no longer belongs to the newly
-                // chosen company, same narrowing pattern as the subscriber
-                // list's Company -> Service filter.
-                setForm((f) => {
-                  const stillValid = services.find((s) => s.id === f.service_id)?.comp_id === company_id
-                  return { ...f, company_id, service_id: stillValid || !company_id ? f.service_id : '' }
-                })
-              }}
-              className={inputClass}
-            >
-              <option value="">None</option>
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={labelClass}>Service</label>
-            <select
-              value={form.service_id ?? ''}
-              onChange={(e) => update('service_id', e.target.value)}
-              className={inputClass}
-            >
-              <option value="">None</option>
-              {filteredServices.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} ({s.companies?.name})
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={labelClass}>Owner</label>
-            <select
-              value={form.owner_id ?? ''}
-              onChange={(e) => update('owner_id', e.target.value)}
-              className={inputClass}
-            >
-              <option value="">None</option>
-              {owners.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={labelClass}>Default collector</label>
-            <select
-              value={form.default_collector_id ?? ''}
-              onChange={(e) => update('default_collector_id', e.target.value)}
-              className={inputClass}
-            >
-              <option value="">None</option>
-              {collectors.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div>
-          <label className={labelClass}>Connection status</label>
           <select
-            value={form.connection_status}
-            onChange={(e) =>
-              update('connection_status', e.target.value as SubscriberInput['connection_status'])
-            }
+            value={form.owner_id ?? ''}
+            onChange={(e) => update('owner_id', e.target.value)}
+            className={inputClass}
+            required
+          >
+            <option value="">Owner</option>
+            {owners.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={form.default_collector_id ?? ''}
+            onChange={(e) => update('default_collector_id', e.target.value)}
             className={inputClass}
           >
-            <option value="active">Active</option>
-            <option value="suspended">Suspended</option>
-            <option value="cancelled">Cancelled</option>
+            <option value="">Collector</option>
+            {collectors.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
           </select>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={labelClass}>Connection date</label>
-            <input
-              type="date"
-              value={form.connection_date ?? ''}
-              onChange={(e) => update('connection_date', e.target.value)}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className={labelClass}>Expiry date</label>
-            <input
-              type="date"
-              value={form.expiry_date ?? ''}
-              onChange={(e) => update('expiry_date', e.target.value)}
-              className={inputClass}
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className={labelClass}>Notes</label>
-          <textarea
-            value={form.notes ?? ''}
-            onChange={(e) => update('notes', e.target.value)}
-            className={inputClass}
-            rows={3}
-          />
-        </div>
-
-        <h2 className="pt-2 text-sm font-semibold text-neutral-500 dark:text-neutral-400">
-          Technical &amp; billing details
-        </h2>
+        <select
+          value={form.connection_status}
+          onChange={(e) => update('connection_status', e.target.value as SubscriberInput['connection_status'])}
+          className={inputClass}
+        >
+          <option value="active">Active</option>
+          <option value="suspended">Suspended</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
 
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={labelClass}>Password</label>
-            <input
-              value={form.password ?? ''}
-              onChange={(e) => update('password', e.target.value)}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className={labelClass}>Switch</label>
-            <input
-              value={form.switch ?? ''}
-              onChange={(e) => update('switch', e.target.value)}
-              className={inputClass}
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className={labelClass}>MAC address</label>
           <input
-            value={form.mac_address ?? ''}
-            onChange={(e) => update('mac_address', e.target.value)}
+            type="date"
+            aria-label="Connection date"
+            value={form.connection_date ?? ''}
+            onChange={(e) => updateConnectionDate(e.target.value)}
+            className={inputClass}
+          />
+          <input
+            type="date"
+            aria-label="Expiry date"
+            value={form.expiry_date ?? ''}
+            onChange={(e) => updateExpiryDate(e.target.value)}
             className={inputClass}
           />
         </div>
 
+        {isEdit && (
+          <>
+            <textarea
+              value={form.notes ?? ''}
+              onChange={(e) => update('notes', e.target.value)}
+              placeholder="Notes"
+              className={inputClass}
+              rows={3}
+            />
+
+            <h2 className="pt-2 text-sm font-semibold text-neutral-500 dark:text-neutral-400">
+              Technical &amp; billing details
+            </h2>
+
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                value={form.password ?? ''}
+                onChange={(e) => update('password', e.target.value)}
+                placeholder="Password"
+                className={inputClass}
+              />
+              <input
+                value={form.switch ?? ''}
+                onChange={(e) => update('switch', e.target.value)}
+                placeholder="Switch"
+                className={inputClass}
+              />
+            </div>
+
+            <input
+              value={form.mac_address ?? ''}
+              onChange={(e) => update('mac_address', e.target.value)}
+              placeholder="MAC address"
+              className={inputClass}
+            />
+          </>
+        )}
+
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={labelClass}>
-              Custom price (overrides the service's price for this subscriber's bills; leave blank
-              to use the service's normal price)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={form.price ?? ''}
-              onChange={(e) => update('price', e.target.value === '' ? null : Number(e.target.value))}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className={labelClass}>Balance (this subscriber's cost to company)</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={form.balance ?? ''}
-              onChange={(e) => update('balance', e.target.value === '' ? null : Number(e.target.value))}
-              className={inputClass}
-            />
-          </div>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={form.price ?? ''}
+            onChange={(e) => update('price', e.target.value === '' ? null : Number(e.target.value))}
+            placeholder="Custom price (optional)"
+            className={inputClass}
+          />
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={form.balance ?? ''}
+            onChange={(e) => update('balance', e.target.value === '' ? null : Number(e.target.value))}
+            placeholder="Balance (optional)"
+            className={inputClass}
+          />
         </div>
 
         <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className={secondaryButtonClass}
-          >
+          <button type="button" onClick={() => navigate(-1)} className={secondaryButtonClass}>
             Cancel
           </button>
           <button type="submit" disabled={saving} className={primaryButtonClass}>

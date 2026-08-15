@@ -17,10 +17,10 @@ import { listServices } from '../lib/api/services'
 import { listCollectors } from '../lib/api/collectors'
 import { listOwners } from '../lib/api/owners'
 import { listCompanies } from '../lib/api/companies'
-import { listRegions } from '../lib/api/regions'
+import { listAddresses } from '../lib/api/addresses'
 import { emptyFilters } from '../types/subscribers'
 import type { SubscriberWithRelations } from '../types/subscribers'
-import type { ServiceWithCompany, Owner, Company, Region } from '../types/reference'
+import type { ServiceWithCompany, Owner, Company, Address } from '../types/reference'
 import type { Collector } from '../types/reference'
 import type { MonthlyLogRow } from '../types/reports'
 import { FILTER_FIELDS, TEXT_FILTER_FIELDS, type FilterField } from '../lib/subscriberFilterFields'
@@ -101,7 +101,7 @@ export function DashboardPage() {
   const [collectors, setCollectors] = useState<Collector[]>([])
   const [owners, setOwners] = useState<Owner[]>([])
   const [companies, setCompanies] = useState<Company[]>([])
-  const [regions, setRegions] = useState<Region[]>([])
+  const [addresses, setAddresses] = useState<Address[]>([])
   const [monthlyLogBySubscriber, setMonthlyLogBySubscriber] = useState<Record<string, MonthlyLogRow>>({})
 
   const [paymentSub, setPaymentSub] = useState<SubscriberWithRelations | null>(null)
@@ -128,7 +128,7 @@ export function DashboardPage() {
     listCollectors().then(setCollectors).catch(() => {})
     listOwners().then(setOwners).catch(() => {})
     listCompanies().then(setCompanies).catch(() => {})
-    listRegions().then(setRegions).catch(() => {})
+    listAddresses().then(setAddresses).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -397,16 +397,16 @@ export function DashboardPage() {
                 </select>
               )}
 
-              {filterField === 'region' && (
+              {filterField === 'address' && (
                 <select
-                  value={filters.regionId}
-                  onChange={(e) => updateFilter('regionId', e.target.value)}
+                  value={filters.addressId}
+                  onChange={(e) => updateFilter('addressId', e.target.value)}
                   className="max-w-32 flex-1 rounded-full bg-white px-2 py-1.5 text-xs text-neutral-900 shadow-sm"
                 >
-                  <option value="">Any region</option>
-                  {regions.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name}
+                  <option value="">Any address</option>
+                  {addresses.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
                     </option>
                   ))}
                 </select>

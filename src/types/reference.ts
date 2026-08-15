@@ -40,7 +40,7 @@ export interface Collector {
   updated_at: string
 }
 
-export interface Region {
+export interface Address {
   id: string
   name: string
   is_active: boolean

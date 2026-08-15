@@ -8,7 +8,7 @@ export interface Subscriber {
   nationality: Nationality | null
   address: string | null
   building: string | null
-  region_id: string | null
+  address_id: string | null
   service_id: string | null
   company_id: string | null
   owner_id: string | null
@@ -35,7 +35,7 @@ export interface SubscriberWithRelations extends Subscriber {
   owners: { name: string } | null
   default_collector: { name: string } | null
   services: { name: string; sell_price: number; paid_price: number; companies: { name: string } | null } | null
-  regions: { name: string } | null
+  addresses: { name: string } | null
   company: { name: string } | null
 }
 
@@ -47,7 +47,7 @@ export interface SubscriberFilters {
   collectorId: string
   companyId: string
   serviceId: string
-  regionId: string
+  addressId: string
   status: ConnectionStatus | ''
   debtMode: DebtFilterMode
   expiryFrom: string
@@ -65,7 +65,7 @@ export const emptyFilters: SubscriberFilters = {
   collectorId: '',
   companyId: '',
   serviceId: '',
-  regionId: '',
+  addressId: '',
   status: '',
   debtMode: 'any',
   expiryFrom: '',
