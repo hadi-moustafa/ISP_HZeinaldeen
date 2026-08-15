@@ -27,6 +27,7 @@ export interface DashboardSummary {
   totalDue: number
   totalPaid: number
   totalLeft: number
+  totalLeftProducts: number
   totalDebtSubscribers: number
   paidUsers: number
   unpaidUsers: number
@@ -52,13 +53,14 @@ export interface DashboardSummary {
 // captures subscribers not yet billed this period, not just
 // unpaid/partial/postponed invoice rows.
 //
-// totalSoldProducts/totalPaymentsProducts only look at this month's 'sale'
-// movements. Movements marked payment_status='partial' are excluded from
-// totalPaymentsProducts (but still counted in totalSoldProducts) since
-// product_movements only has a paid/unpaid/partial flag, not an amount-
-// collected ledger like subscriber payments -- there's no way to know how
-// much of a partial sale was actually collected. Known limitation, not
-// solved here.
+// totalSoldProducts/totalPaymentsProducts/totalLeftProducts only look at
+// this month's 'sale' movements. Movements marked payment_status='partial'
+// are excluded from both totalPaymentsProducts and totalLeftProducts (but
+// still counted in totalSoldProducts) since product_movements only has a
+// paid/unpaid/partial flag, not an amount-collected ledger like subscriber
+// payments -- there's no way to know how much of a partial sale was
+// actually collected, or how much of it is still owed. Known limitation,
+// not solved here.
 export async function getDashboardSummary(periodMonth: string): Promise<DashboardSummary> {
   const monthStart = periodMonth.slice(0, 8) + '01'
   const nextMonthStart = (() => {
@@ -103,12 +105,16 @@ export async function getDashboardSummary(periodMonth: string): Promise<Dashboar
   const totalPaymentsProducts = saleMovements
     .filter((m) => m.payment_status === 'paid')
     .reduce((sum, m) => sum + Math.abs(m.quantity) * m.unit_price, 0)
+  const totalLeftProducts = saleMovements
+    .filter((m) => m.payment_status === 'unpaid')
+    .reduce((sum, m) => sum + Math.abs(m.quantity) * m.unit_price, 0)
 
   return {
     totalSubscribers: countRes.count ?? 0,
     totalDue,
     totalPaid,
     totalLeft: Math.max(totalDue - totalPaid, 0),
+    totalLeftProducts,
     totalDebtSubscribers: debtIds.size,
     paidUsers,
     unpaidUsers,

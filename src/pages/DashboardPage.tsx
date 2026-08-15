@@ -529,8 +529,13 @@ export function DashboardPage() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-lg font-bold text-rose-600">{summary.totalLeft.toFixed(2)}</p>
+                  <p className="text-lg font-bold text-rose-600">
+                    {(summary.totalLeft + summary.totalLeftProducts).toFixed(2)}
+                  </p>
                   <p className="text-xs text-neutral-500">Left to collect</p>
+                  <p className="mt-0.5 text-[10px] text-neutral-400">
+                    Svc {summary.totalLeft.toFixed(2)} · Prod {summary.totalLeftProducts.toFixed(2)}
+                  </p>
                 </div>
               </div>
 
