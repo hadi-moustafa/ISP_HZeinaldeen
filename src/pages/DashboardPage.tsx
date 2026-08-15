@@ -6,11 +6,11 @@ import { generateMonthlyInvoices, postponeInvoice, createPeriodInvoice } from '.
 import {
   getDashboardSummary,
   getExpiryWatch,
-  getCollectionWatch,
+  getCollectionTotal,
   listMonthlyLog,
   type DashboardSummary,
   type ExpiryBucket,
-  type CollectionBucket,
+  type CollectionRangeTotal,
 } from '../lib/api/reports'
 import { listSubscribers, type SubscriberSearchField } from '../lib/api/subscribers'
 import { listServices } from '../lib/api/services'
@@ -51,12 +51,15 @@ function statusDotColor(log: MonthlyLogRow | undefined, debt: number): string {
 // "how recent" reading left-to-right, independent of bucket index.
 const BUCKET_DOT_COLORS = ['bg-red-500', 'bg-amber-500', 'bg-neutral-400']
 
-function ForecastCard({ title, children }: { title: string; children: ReactNode }) {
+function ForecastCard({ title, headerRight, children }: { title: string; headerRight?: ReactNode; children: ReactNode }) {
   return (
     <div className={`${cardClass} mb-4`}>
-      <div className="mb-3 flex items-center gap-2">
-        <span className="h-5 w-1 shrink-0 rounded-full bg-gradient-to-b from-blue-500 to-cyan-400" />
-        <h2 className="text-sm font-bold uppercase tracking-wide text-neutral-900">{title}</h2>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="h-5 w-1 shrink-0 rounded-full bg-gradient-to-b from-blue-500 to-cyan-400" />
+          <h2 className="text-sm font-bold uppercase tracking-wide text-neutral-900">{title}</h2>
+        </div>
+        {headerRight}
       </div>
       {children}
     </div>
@@ -81,7 +84,8 @@ export function DashboardPage() {
   const { staff } = useStaff()
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [expiryWatch, setExpiryWatch] = useState<ExpiryBucket[] | null>(null)
-  const [collectionWatch, setCollectionWatch] = useState<CollectionBucket[] | null>(null)
+  const [collectedDays, setCollectedDays] = useState(7)
+  const [collectionTotal, setCollectionTotal] = useState<CollectionRangeTotal | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const [generating, setGenerating] = useState(false)
@@ -110,9 +114,9 @@ export function DashboardPage() {
     getExpiryWatch()
       .then(setExpiryWatch)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load expiry watch'))
-    getCollectionWatch()
-      .then(setCollectionWatch)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load collection watch'))
+    getCollectionTotal(collectedDays)
+      .then(setCollectionTotal)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load collected total'))
     listMonthlyLog(currentPeriodMonth())
       .then((rows) => setMonthlyLogBySubscriber(Object.fromEntries(rows.map((row) => [row.subscriber_id, row]))))
       .catch(() => {})
@@ -127,6 +131,12 @@ export function DashboardPage() {
     listRegions().then(setRegions).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    getCollectionTotal(collectedDays)
+      .then(setCollectionTotal)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load collected total'))
+  }, [collectedDays])
 
   const filteredServices = useMemo(
     () => (filters.companyId ? services.filter((s) => s.comp_id === filters.companyId) : services),
@@ -560,19 +570,32 @@ export function DashboardPage() {
 
           {!summary && !error && <p className="mb-3 text-sm text-neutral-500">Loading…</p>}
 
-          {/* Collected -- how many subscribers paid, and how much, on each recent day */}
-          {collectionWatch && (
-            <ForecastCard title="Collected">
-              <div className="grid grid-cols-3 gap-2">
-                {collectionWatch.map((bucket, i) => (
-                  <ForecastTile
-                    key={bucket.date}
-                    color={BUCKET_DOT_COLORS[i]}
-                    label={bucket.label}
-                    count={bucket.count}
-                    amount={bucket.amount}
-                  />
-                ))}
+          {/* Collected -- cumulative total over an admin-selectable 1-30 day range */}
+          {collectionTotal && (
+            <ForecastCard
+              title="Collected"
+              headerRight={
+                <select
+                  value={collectedDays}
+                  onChange={(e) => setCollectedDays(Number(e.target.value))}
+                  className="shrink-0 rounded-full bg-neutral-50 px-2 py-1 text-xs text-neutral-700"
+                >
+                  {Array.from({ length: 30 }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={d}>
+                      Last {d} day{d > 1 ? 's' : ''}
+                    </option>
+                  ))}
+                </select>
+              }
+            >
+              <div className="rounded-xl bg-neutral-50 px-3 py-3">
+                <p className="text-2xl font-bold text-emerald-600">
+                  {collectionTotal.count}{' '}
+                  <span className="text-sm font-medium text-neutral-400">· ${collectionTotal.amount.toFixed(0)}</span>
+                </p>
+                <p className="text-xs text-neutral-500">
+                  subscribers collected from in the last {collectionTotal.days} day{collectionTotal.days > 1 ? 's' : ''}
+                </p>
               </div>
             </ForecastCard>
           )}

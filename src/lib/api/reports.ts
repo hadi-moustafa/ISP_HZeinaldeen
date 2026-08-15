@@ -134,42 +134,33 @@ function localDateString(offsetDays: number): string {
   return `${y}-${m}-${day}`
 }
 
-export interface CollectionBucket {
-  date: string
-  label: string
+export interface CollectionRangeTotal {
+  days: number
   count: number
   amount: number
 }
 
-// Mirrors getExpiryWatch()'s exact-day-snapshot shape (today / 2 days ago /
-// 5 days ago), just looking backward at payments.payment_date instead of
-// forward at subscribers.expiry_date -- "how many subscribers paid, and how
-// much, on each of those three specific days."
-export async function getCollectionWatch(): Promise<CollectionBucket[]> {
-  const buckets = [
-    { date: localDateString(0), label: 'Today' },
-    { date: localDateString(-2), label: '2 days ago' },
-    { date: localDateString(-5), label: '5 days ago' },
-  ]
+// Cumulative total, not exact-day snapshots -- "how many subscribers paid,
+// and how much, across the last N days combined" for an admin-selectable N
+// (1-30, clamped defensively since this feeds a date range query). N=1
+// means today only.
+export async function getCollectionTotal(days: number): Promise<CollectionRangeTotal> {
+  const clampedDays = Math.min(Math.max(Math.trunc(days), 1), 30)
+  const fromDate = localDateString(-(clampedDays - 1))
+  const toDate = localDateString(0)
   const { data, error } = await supabase
     .from('payments')
-    .select('subscriber_id, amount, payment_date')
-    .in(
-      'payment_date',
-      buckets.map((b) => b.date),
-    )
+    .select('subscriber_id, amount')
+    .gte('payment_date', fromDate)
+    .lte('payment_date', toDate)
   if (error) throw error
-  const rows = data as { subscriber_id: string; amount: number; payment_date: string }[]
+  const rows = data as { subscriber_id: string; amount: number }[]
 
-  return buckets.map((bucket) => {
-    const dayRows = rows.filter((r) => r.payment_date === bucket.date)
-    return {
-      date: bucket.date,
-      label: bucket.label,
-      count: new Set(dayRows.map((r) => r.subscriber_id)).size,
-      amount: dayRows.reduce((sum, r) => sum + r.amount, 0),
-    }
-  })
+  return {
+    days: clampedDays,
+    count: new Set(rows.map((r) => r.subscriber_id)).size,
+    amount: rows.reduce((sum, r) => sum + r.amount, 0),
+  }
 }
 
 // Three separate, non-overlapping exact-day snapshots (today / +2 / +5),
