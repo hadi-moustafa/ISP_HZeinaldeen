@@ -10,6 +10,7 @@ export interface MonthlyLogRow {
   due_date: string | null
   postponed_to: string | null
   invoice_id: string
+  collected_at: string | null
 }
 
 export interface MonthlyFinancialRow {

@@ -58,6 +58,7 @@ export function MonthlyLogPage() {
         Status: r.status,
         'Due Date': r.due_date ?? '',
         'Postponed To': r.postponed_to ?? '',
+        'Collected On': r.collected_at ?? '',
       })),
     )
   }
@@ -120,6 +121,9 @@ export function MonthlyLogPage() {
                 <p className="text-sm text-neutral-600 dark:text-neutral-300">
                   Due {row.amount_due} · Paid {row.amount_paid}
                 </p>
+                {row.collected_at && (
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400">Collected on {row.collected_at}</p>
+                )}
               </div>
               <span
                 className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${statusBadgeClass[row.status]}`}

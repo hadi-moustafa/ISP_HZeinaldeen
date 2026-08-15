@@ -134,6 +134,44 @@ function localDateString(offsetDays: number): string {
   return `${y}-${m}-${day}`
 }
 
+export interface CollectionBucket {
+  date: string
+  label: string
+  count: number
+  amount: number
+}
+
+// Mirrors getExpiryWatch()'s exact-day-snapshot shape (today / 2 days ago /
+// 5 days ago), just looking backward at payments.payment_date instead of
+// forward at subscribers.expiry_date -- "how many subscribers paid, and how
+// much, on each of those three specific days."
+export async function getCollectionWatch(): Promise<CollectionBucket[]> {
+  const buckets = [
+    { date: localDateString(0), label: 'Today' },
+    { date: localDateString(-2), label: '2 days ago' },
+    { date: localDateString(-5), label: '5 days ago' },
+  ]
+  const { data, error } = await supabase
+    .from('payments')
+    .select('subscriber_id, amount, payment_date')
+    .in(
+      'payment_date',
+      buckets.map((b) => b.date),
+    )
+  if (error) throw error
+  const rows = data as { subscriber_id: string; amount: number; payment_date: string }[]
+
+  return buckets.map((bucket) => {
+    const dayRows = rows.filter((r) => r.payment_date === bucket.date)
+    return {
+      date: bucket.date,
+      label: bucket.label,
+      count: new Set(dayRows.map((r) => r.subscriber_id)).size,
+      amount: dayRows.reduce((sum, r) => sum + r.amount, 0),
+    }
+  })
+}
+
 // Three separate, non-overlapping exact-day snapshots (today / +2 / +5),
 // not a cumulative window -- confirmed client intent. Single fetch drives
 // both the "expiring soon, go collect" subscriber list and the per-company

@@ -18,6 +18,7 @@ import { listMonthlyLog } from '../../lib/api/reports'
 import { logActivity } from '../../lib/api/activityLog'
 import type { SubscriberWithRelations } from '../../types/subscribers'
 import { emptyFilters } from '../../types/subscribers'
+import { FILTER_FIELDS, TEXT_FILTER_FIELDS, type FilterField } from '../../lib/subscriberFilterFields'
 import type { MonthlyLogRow } from '../../types/reports'
 import type { Owner, Collector, Company, ServiceWithCompany, Region } from '../../types/reference'
 import { useStaff } from '../../context/StaffContext'
@@ -87,28 +88,8 @@ function currentPeriodMonth() {
 // status/expiry/connection) drive the already-existing dedicated filter
 // fields on `filters` directly -- this dropdown just controls which single
 // control is visible, replacing the old separate "Adv." panel.
-type FilterField =
-  | 'name' | 'id' | 'owner' | 'username' | 'phone' | 'nationality' | 'notes'
-  | 'collector' | 'company' | 'service' | 'region' | 'status' | 'expiry' | 'connection'
-
-const FILTER_FIELDS: { value: FilterField; label: string }[] = [
-  { value: 'name', label: 'Name' },
-  { value: 'id', label: 'ID' },
-  { value: 'owner', label: 'Owner' },
-  { value: 'username', label: 'Username' },
-  { value: 'phone', label: 'Phone' },
-  { value: 'nationality', label: 'Nationality' },
-  { value: 'notes', label: 'Notes' },
-  { value: 'collector', label: 'Collector' },
-  { value: 'company', label: 'Company' },
-  { value: 'service', label: 'Service' },
-  { value: 'region', label: 'Region' },
-  { value: 'status', label: 'Connection status' },
-  { value: 'expiry', label: 'Expiry date' },
-  { value: 'connection', label: 'Connection date' },
-]
-
-const TEXT_FILTER_FIELDS: FilterField[] = ['name', 'id', 'owner', 'username', 'phone', 'notes']
+// (FilterField/FILTER_FIELDS/TEXT_FILTER_FIELDS live in
+// lib/subscriberFilterFields.ts, shared with the dashboard's filter panel.)
 
 export function SubscribersListPage() {
   const navigate = useNavigate()
