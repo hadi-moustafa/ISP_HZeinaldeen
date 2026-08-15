@@ -84,7 +84,7 @@ export function DashboardPage() {
   const { staff } = useStaff()
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [expiryWatch, setExpiryWatch] = useState<ExpiryBucket[] | null>(null)
-  const [collectedDays, setCollectedDays] = useState(7)
+  const [collectedDays, setCollectedDays] = useState(5)
   const [collectionTotal, setCollectionTotal] = useState<CollectionRangeTotal | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -570,7 +570,7 @@ export function DashboardPage() {
 
           {!summary && !error && <p className="mb-3 text-sm text-neutral-500">Loading…</p>}
 
-          {/* Collected -- cumulative total over an admin-selectable 1-30 day range */}
+          {/* Collected -- cumulative total over an admin-selectable day range, in steps of 5 up to 30 */}
           {collectionTotal && (
             <ForecastCard
               title="Collected"
@@ -580,9 +580,9 @@ export function DashboardPage() {
                   onChange={(e) => setCollectedDays(Number(e.target.value))}
                   className="shrink-0 rounded-full bg-neutral-50 px-2 py-1 text-xs text-neutral-700"
                 >
-                  {Array.from({ length: 30 }, (_, i) => i + 1).map((d) => (
+                  {[5, 10, 15, 20, 25, 30].map((d) => (
                     <option key={d} value={d}>
-                      Last {d} day{d > 1 ? 's' : ''}
+                      Last {d} days
                     </option>
                   ))}
                 </select>
