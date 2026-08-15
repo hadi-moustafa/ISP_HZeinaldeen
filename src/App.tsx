@@ -24,6 +24,7 @@ import { SubscriberDetailPage } from './pages/subscribers/SubscriberDetailPage'
 import { MonthlyLogPage } from './pages/reports/MonthlyLogPage'
 import { FinancialsPage } from './pages/reports/FinancialsPage'
 import { OfflinePage } from './pages/OfflinePage'
+import { DabdabehPage } from './pages/DabdabehPage'
 
 function App() {
   return (
@@ -96,6 +97,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <OfflinePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dabdabeh"
+            element={
+              <ProtectedRoute>
+                <DabdabehPage />
               </ProtectedRoute>
             }
           />

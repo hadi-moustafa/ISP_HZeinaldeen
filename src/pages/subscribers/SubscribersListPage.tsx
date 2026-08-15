@@ -14,6 +14,7 @@ import { listCollectors } from '../../lib/api/collectors'
 import { listCompanies } from '../../lib/api/companies'
 import { listServices } from '../../lib/api/services'
 import { listAddresses } from '../../lib/api/addresses'
+import { addToCollectTrack } from '../../lib/api/collectTrack'
 import { listMonthlyLog } from '../../lib/api/reports'
 import { logActivity } from '../../lib/api/activityLog'
 import type { SubscriberWithRelations } from '../../types/subscribers'
@@ -289,6 +290,18 @@ export function SubscribersListPage() {
       setSelectedIds(new Set())
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to deactivate selected subscribers')
+    }
+  }
+
+  async function handleBulkAddToTrack() {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0 || !staff) return
+    try {
+      await addToCollectTrack(staff.id, ids)
+      logActivity(staff.id, `${staff.username} added ${ids.length} subscribers to their collect track`, 'subscriber')
+      setSelectedIds(new Set())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add selected subscribers to collect track')
     }
   }
 
@@ -716,6 +729,12 @@ export function SubscribersListPage() {
         )}
         {selectedIds.size > 0 && (
           <>
+            <button
+              onClick={handleBulkAddToTrack}
+              className="shrink-0 rounded-full bg-indigo-100 px-3 py-2 text-xs font-semibold text-indigo-700"
+            >
+              Add to collect track
+            </button>
             <button
               onClick={handleBulkDeactivate}
               className="shrink-0 rounded-full bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-700"

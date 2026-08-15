@@ -23,6 +23,7 @@ type NavLinkItem = { to: string; label: string; adminOnly?: boolean; collectorHi
 const primaryLinks: NavLinkItem[] = [
   { to: '/', label: 'Dashboard', collectorHidden: true },
   { to: '/subscribers', label: 'Subscribers' },
+  { to: '/dabdabeh', label: 'Dabdabeh' },
   { to: '/reports/monthly-log', label: 'Monthly Log', collectorHidden: true },
   { to: '/reports/financials', label: 'Financial Report', adminOnly: true, collectorHidden: true },
   { to: '/field', label: 'Field View (offline)', collectorHidden: true },
