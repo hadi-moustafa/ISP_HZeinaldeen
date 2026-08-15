@@ -17,7 +17,6 @@ import { round2 } from '../../lib/money'
 import { Modal } from '../Modal'
 import {
   inputClass,
-  labelClass,
   primaryButtonClass,
   secondaryButtonClass,
   cardClass,
@@ -405,7 +404,6 @@ export function InvoicesSection({
         title={`Log payment · ${paymentModalInvoice?.period_month ?? ''}`}
       >
         <form onSubmit={submitPayment}>
-          <label className={labelClass}>Amount (max {paymentRemaining.toFixed(2)})</label>
           <input
             type="number"
             step="0.01"
@@ -413,42 +411,40 @@ export function InvoicesSection({
             max={paymentRemaining}
             value={paymentForm.amount}
             onChange={(e) => setPaymentForm((f) => ({ ...f, amount: e.target.value }))}
+            placeholder={`Amount (max ${paymentRemaining.toFixed(2)})`}
             className={`${inputClass} mb-4`}
             required
           />
-          <label className={labelClass}>Payment date</label>
           <input
             type="date"
+            aria-label="Payment date"
             value={paymentForm.payment_date}
             onChange={(e) => setPaymentForm((f) => ({ ...f, payment_date: e.target.value }))}
             className={`${inputClass} mb-4`}
             required
           />
-          <label className={labelClass}>Method</label>
           <input
             value={paymentForm.method}
             onChange={(e) => setPaymentForm((f) => ({ ...f, method: e.target.value }))}
+            placeholder="Method"
             className={`${inputClass} mb-4`}
           />
-          <label className={labelClass}>
-            Collector (who actually collected this — may differ from default)
-          </label>
           <select
             value={paymentForm.collector_id}
             onChange={(e) => setPaymentForm((f) => ({ ...f, collector_id: e.target.value }))}
             className={`${inputClass} mb-4`}
           >
-            <option value="">None</option>
+            <option value="">Collector who collected this</option>
             {collectors.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
           </select>
-          <label className={labelClass}>Note</label>
           <input
             value={paymentForm.note}
             onChange={(e) => setPaymentForm((f) => ({ ...f, note: e.target.value }))}
+            placeholder="Note"
             className={`${inputClass} mb-4`}
           />
           <div className="flex justify-end gap-2">
@@ -475,18 +471,18 @@ export function InvoicesSection({
           <p className="mb-4 text-xs text-neutral-500 dark:text-neutral-400">
             Also moves this subscriber's expiry date to the new due date.
           </p>
-          <label className={labelClass}>New due date</label>
           <input
             type="date"
+            aria-label="New due date"
             value={postponeForm.new_due_date}
             onChange={(e) => setPostponeForm((f) => ({ ...f, new_due_date: e.target.value }))}
             className={`${inputClass} mb-4`}
             required
           />
-          <label className={labelClass}>Reason</label>
           <input
             value={postponeForm.reason}
             onChange={(e) => setPostponeForm((f) => ({ ...f, reason: e.target.value }))}
+            placeholder="Reason"
             className={`${inputClass} mb-4`}
           />
           <div className="flex justify-end gap-2">
@@ -510,7 +506,6 @@ export function InvoicesSection({
         title="Edit payment"
       >
         <form onSubmit={submitEditPayment}>
-          <label className={labelClass}>Amount (max {editRemaining.toFixed(2)})</label>
           <input
             type="number"
             step="0.01"
@@ -518,40 +513,40 @@ export function InvoicesSection({
             max={editRemaining}
             value={editForm.amount}
             onChange={(e) => setEditForm((f) => ({ ...f, amount: e.target.value }))}
+            placeholder={`Amount (max ${editRemaining.toFixed(2)})`}
             className={`${inputClass} mb-4`}
             required
           />
-          <label className={labelClass}>Payment date</label>
           <input
             type="date"
+            aria-label="Payment date"
             value={editForm.payment_date}
             onChange={(e) => setEditForm((f) => ({ ...f, payment_date: e.target.value }))}
             className={`${inputClass} mb-4`}
             required
           />
-          <label className={labelClass}>Method</label>
           <input
             value={editForm.method}
             onChange={(e) => setEditForm((f) => ({ ...f, method: e.target.value }))}
+            placeholder="Method"
             className={`${inputClass} mb-4`}
           />
-          <label className={labelClass}>Collector</label>
           <select
             value={editForm.collector_id}
             onChange={(e) => setEditForm((f) => ({ ...f, collector_id: e.target.value }))}
             className={`${inputClass} mb-4`}
           >
-            <option value="">None</option>
+            <option value="">Collector</option>
             {collectors.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
           </select>
-          <label className={labelClass}>Note</label>
           <input
             value={editForm.note}
             onChange={(e) => setEditForm((f) => ({ ...f, note: e.target.value }))}
+            placeholder="Note"
             className={`${inputClass} mb-4`}
           />
           <div className="flex justify-end gap-2">
@@ -575,12 +570,11 @@ export function InvoicesSection({
             This subscriber has no phone number on file. Add one to send them this receipt --
             it's saved to their record for next time too.
           </p>
-          <label className={labelClass}>Phone number</label>
           <input
             type="tel"
             value={phoneDraft}
             onChange={(e) => setPhoneDraft(e.target.value)}
-            placeholder="e.g. 03123456"
+            placeholder="Phone number, e.g. 03123456"
             className={`${inputClass} mb-4`}
             required
           />

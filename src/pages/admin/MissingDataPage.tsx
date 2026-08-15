@@ -5,7 +5,7 @@ import { logActivity } from '../../lib/api/activityLog'
 import { useStaff } from '../../context/StaffContext'
 import type { SubscriberWithRelations } from '../../types/subscribers'
 import type { Address } from '../../types/reference'
-import { inputClass, labelClass, primaryButtonClass, cardClass } from '../../lib/uiClasses'
+import { inputClass, primaryButtonClass, cardClass } from '../../lib/uiClasses'
 
 // Which fields count as "missing" for this page -- kept in sync with the
 // .or(...) filter in listSubscribersWithMissingData().
@@ -130,56 +130,46 @@ export function MissingDataPage() {
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {missing.includes('phone') && (
-                  <div>
-                    <label className={labelClass}>Phone</label>
-                    <input
-                      type="tel"
-                      value={draft.phone}
-                      onChange={(e) => updateDraft(sub.id, { phone: e.target.value })}
-                      className={inputClass}
-                    />
-                  </div>
+                  <input
+                    type="tel"
+                    value={draft.phone}
+                    onChange={(e) => updateDraft(sub.id, { phone: e.target.value })}
+                    placeholder="Phone"
+                    className={inputClass}
+                  />
                 )}
                 {missing.includes('address_id') && (
-                  <div>
-                    <label className={labelClass}>Address</label>
-                    <select
-                      value={draft.address_id}
-                      onChange={(e) => updateDraft(sub.id, { address_id: e.target.value })}
-                      className={inputClass}
-                    >
-                      <option value="">Select an address…</option>
-                      {addresses.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <select
+                    value={draft.address_id}
+                    onChange={(e) => updateDraft(sub.id, { address_id: e.target.value })}
+                    className={inputClass}
+                  >
+                    <option value="">Select an address…</option>
+                    {addresses.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </select>
                 )}
                 {missing.includes('nationality') && (
-                  <div>
-                    <label className={labelClass}>Nationality</label>
-                    <select
-                      value={draft.nationality}
-                      onChange={(e) => updateDraft(sub.id, { nationality: e.target.value })}
-                      className={inputClass}
-                    >
-                      <option value="">Select…</option>
-                      <option value="Lebanese">Lebanese</option>
-                      <option value="Syrian">Syrian</option>
-                    </select>
-                  </div>
+                  <select
+                    value={draft.nationality}
+                    onChange={(e) => updateDraft(sub.id, { nationality: e.target.value })}
+                    className={inputClass}
+                  >
+                    <option value="">Nationality</option>
+                    <option value="Lebanese">Lebanese</option>
+                    <option value="Syrian">Syrian</option>
+                  </select>
                 )}
                 {missing.includes('building') && (
-                  <div>
-                    <label className={labelClass}>Building</label>
-                    <input
-                      value={draft.building}
-                      onChange={(e) => updateDraft(sub.id, { building: e.target.value })}
-                      className={inputClass}
-                    />
-                  </div>
+                  <input
+                    value={draft.building}
+                    onChange={(e) => updateDraft(sub.id, { building: e.target.value })}
+                    placeholder="Building"
+                    className={inputClass}
+                  />
                 )}
               </div>
 

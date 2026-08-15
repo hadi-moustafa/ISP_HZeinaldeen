@@ -35,26 +35,22 @@ export function LoginPage() {
           ISP Manager
         </h1>
 
-        <label className="mb-1 block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-          Username
-        </label>
         <input
           type="text"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           autoComplete="username"
+          placeholder="Username"
           className="mb-4 w-full rounded-md border border-neutral-300 px-3 py-3 text-base dark:border-neutral-600 dark:bg-neutral-700 dark:text-neutral-100"
           required
         />
 
-        <label className="mb-1 block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-          Password
-        </label>
         <input
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="current-password"
+          placeholder="Password"
           className="mb-4 w-full rounded-md border border-neutral-300 px-3 py-3 text-base dark:border-neutral-600 dark:bg-neutral-700 dark:text-neutral-100"
           required
         />

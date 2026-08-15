@@ -13,7 +13,7 @@ import { openWhatsApp, paidMessage, postponedMessage, debtMessage } from '../../
 import { round2 } from '../../lib/money'
 import { useStaff } from '../../context/StaffContext'
 import { Modal } from '../Modal'
-import { inputClass, labelClass, secondaryButtonClass, primaryButtonClass } from '../../lib/uiClasses'
+import { inputClass, secondaryButtonClass, primaryButtonClass } from '../../lib/uiClasses'
 import type { SubscriberWithRelations } from '../../types/subscribers'
 import type { MonthlyLogRow } from '../../types/reports'
 import type { Collector, ServiceWithCompany } from '../../types/reference'
@@ -259,7 +259,6 @@ export function PaymentModal({
               forward so next month is what gets collected next. Use "Save & Notify" below
               to also send a WhatsApp confirmation.
             </p>
-            <label className={labelClass}>Amount (max {paymentRemaining.toFixed(2)})</label>
             <input
               type="number"
               step="0.01"
@@ -267,42 +266,40 @@ export function PaymentModal({
               max={paymentRemaining}
               value={paymentForm.amount}
               onChange={(e) => setPaymentForm((f) => ({ ...f, amount: e.target.value }))}
+              placeholder={`Amount (max ${paymentRemaining.toFixed(2)})`}
               className={`${inputClass} mb-4`}
               required
             />
-            <label className={labelClass}>Payment date</label>
             <input
               type="date"
+              aria-label="Payment date"
               value={paymentForm.payment_date}
               onChange={(e) => setPaymentForm((f) => ({ ...f, payment_date: e.target.value }))}
               className={`${inputClass} mb-4`}
               required
             />
-            <label className={labelClass}>Method</label>
             <input
               value={paymentForm.method}
               onChange={(e) => setPaymentForm((f) => ({ ...f, method: e.target.value }))}
+              placeholder="Method"
               className={`${inputClass} mb-4`}
             />
-            <label className={labelClass}>
-              Collector (who actually collected this — may differ from default)
-            </label>
             <select
               value={paymentForm.collector_id}
               onChange={(e) => setPaymentForm((f) => ({ ...f, collector_id: e.target.value }))}
               className={`${inputClass} mb-4`}
             >
-              <option value="">None</option>
+              <option value="">Collector who collected this</option>
               {collectors.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
               ))}
             </select>
-            <label className={labelClass}>Note</label>
             <input
               value={paymentForm.note}
               onChange={(e) => setPaymentForm((f) => ({ ...f, note: e.target.value }))}
+              placeholder="Note"
               className={`${inputClass} mb-4`}
             />
           </>
@@ -314,18 +311,18 @@ export function PaymentModal({
               Moves this subscriber's expiry to the new date and turns them orange. Use
               "Save & Notify" below to also send a WhatsApp message.
             </p>
-            <label className={labelClass}>New due date</label>
             <input
               type="date"
+              aria-label="New due date"
               value={postponeForm.new_due_date}
               onChange={(e) => setPostponeForm((f) => ({ ...f, new_due_date: e.target.value }))}
               className={`${inputClass} mb-4`}
               required
             />
-            <label className={labelClass}>Reason</label>
             <input
               value={postponeForm.reason}
               onChange={(e) => setPostponeForm((f) => ({ ...f, reason: e.target.value }))}
+              placeholder="Reason"
               className={`${inputClass} mb-4`}
             />
           </>
@@ -339,7 +336,6 @@ export function PaymentModal({
                   This subscriber has no service assigned yet, so there's no rate to double.
                   Pick one to use for the debt penalty (saved to the subscriber).
                 </p>
-                <label className={labelClass}>Service</label>
                 <select
                   value={serviceDraft}
                   onChange={(e) => setServiceDraft(e.target.value)}
@@ -367,14 +363,11 @@ export function PaymentModal({
 
         {!activeSub?.phone && (
           <div className="mb-4 rounded-xl bg-neutral-50 p-3 dark:bg-neutral-900">
-            <label className={labelClass}>
-              Phone number (missing — add it to enable "Save & Notify")
-            </label>
             <input
               type="tel"
               value={phoneDraft}
               onChange={(e) => setPhoneDraft(e.target.value)}
-              placeholder="e.g. 03123456"
+              placeholder='Phone number (missing — add it to enable "Save & Notify")'
               className={inputClass}
             />
           </div>

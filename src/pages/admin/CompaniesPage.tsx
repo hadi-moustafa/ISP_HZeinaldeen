@@ -6,7 +6,6 @@ import { useStaff } from '../../context/StaffContext'
 import { Modal } from '../../components/Modal'
 import {
   inputClass,
-  labelClass,
   primaryButtonClass,
   secondaryButtonClass,
   dangerButtonClass,
@@ -163,31 +162,31 @@ export function CompaniesPage() {
         title={editing ? 'Edit company' : 'New company'}
       >
         <form onSubmit={submit}>
-          <label className={labelClass}>Name</label>
           <input
             value={form.name}
             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            placeholder="Name"
             className={`${inputClass} mb-4`}
             required
           />
-          <label className={labelClass}>Payment phone</label>
           <input
             type="tel"
             value={form.payment_phone}
             onChange={(e) => setForm((f) => ({ ...f, payment_phone: e.target.value }))}
+            placeholder="Payment phone"
             className={`${inputClass} mb-4`}
           />
-          <label className={labelClass}>Support phone</label>
           <input
             type="tel"
             value={form.support_phone}
             onChange={(e) => setForm((f) => ({ ...f, support_phone: e.target.value }))}
+            placeholder="Support phone"
             className={`${inputClass} mb-4`}
           />
-          <label className={labelClass}>Notes</label>
           <textarea
             value={form.notes}
             onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+            placeholder="Notes"
             className={`${inputClass} mb-4`}
             rows={3}
           />

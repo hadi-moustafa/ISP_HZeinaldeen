@@ -14,7 +14,6 @@ import { Modal } from '../../components/Modal'
 import { exportToExcel } from '../../lib/exportExcel'
 import {
   inputClass,
-  labelClass,
   primaryButtonClass,
   secondaryButtonClass,
   dangerButtonClass,
@@ -372,81 +371,69 @@ export function ProductsPage() {
         title={editing ? 'Edit product' : 'New product'}
       >
         <form onSubmit={submit}>
-          <label className={labelClass}>Name</label>
           <input
             value={form.name}
             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            placeholder="Name"
             className={`${inputClass} mb-4`}
             required
           />
 
           <div className="mb-4 grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelClass}>SKU</label>
-              <input
-                value={form.sku}
-                onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Category</label>
-              <input
-                value={form.category}
-                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-                className={inputClass}
-              />
-            </div>
+            <input
+              value={form.sku}
+              onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
+              placeholder="SKU"
+              className={inputClass}
+            />
+            <input
+              value={form.category}
+              onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+              placeholder="Category"
+              className={inputClass}
+            />
           </div>
 
           <div className="mb-4 grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelClass}>Cost price</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={form.cost_price}
-                onChange={(e) => setForm((f) => ({ ...f, cost_price: e.target.value }))}
-                className={inputClass}
-                required
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Sell price</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={form.sell_price}
-                onChange={(e) => setForm((f) => ({ ...f, sell_price: e.target.value }))}
-                className={inputClass}
-                required
-              />
-            </div>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={form.cost_price}
+              onChange={(e) => setForm((f) => ({ ...f, cost_price: e.target.value }))}
+              placeholder="Cost price"
+              className={inputClass}
+              required
+            />
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={form.sell_price}
+              onChange={(e) => setForm((f) => ({ ...f, sell_price: e.target.value }))}
+              placeholder="Sell price"
+              className={inputClass}
+              required
+            />
           </div>
 
           <div className="mb-4 grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelClass}>Unit</label>
-              <input
-                value={form.unit}
-                onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))}
-                className={inputClass}
-                required
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Reorder level</label>
-              <input
-                type="number"
-                min="0"
-                value={form.reorder_level}
-                onChange={(e) => setForm((f) => ({ ...f, reorder_level: e.target.value }))}
-                className={inputClass}
-                required
-              />
-            </div>
+            <input
+              value={form.unit}
+              onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))}
+              placeholder="Unit"
+              className={inputClass}
+              required
+            />
+            <input
+              type="number"
+              min="0"
+              value={form.reorder_level}
+              onChange={(e) => setForm((f) => ({ ...f, reorder_level: e.target.value }))}
+              placeholder="Reorder level"
+              className={inputClass}
+              required
+            />
           </div>
 
           {!editing && (
@@ -485,7 +472,6 @@ export function ProductsPage() {
         title={`Log movement · ${movementModalProduct?.name ?? ''}`}
       >
         <form onSubmit={submitMovement}>
-          <label className={labelClass}>Type</label>
           <select
             value={movementForm.movement_type}
             onChange={(e) =>
@@ -503,31 +489,29 @@ export function ProductsPage() {
             ))}
           </select>
 
-          <label className={labelClass}>
-            {movementForm.movement_type === 'adjustment' ? 'Quantity change (+/-)' : 'Quantity'}
-          </label>
           <input
             type="number"
             step="1"
             value={movementForm.quantity}
             onChange={(e) => setMovementForm((f) => ({ ...f, quantity: e.target.value }))}
+            placeholder={movementForm.movement_type === 'adjustment' ? 'Quantity change (+/-)' : 'Quantity'}
             className={`${inputClass} mb-4`}
             required
           />
 
-          <label className={labelClass}>Unit price</label>
           <input
             type="number"
             step="0.01"
             min="0"
             value={movementForm.unit_price}
             onChange={(e) => setMovementForm((f) => ({ ...f, unit_price: e.target.value }))}
+            placeholder="Unit price"
             className={`${inputClass} mb-4`}
           />
 
-          <label className={labelClass}>Movement date</label>
           <input
             type="date"
+            aria-label="Movement date"
             value={movementForm.movement_date}
             onChange={(e) => setMovementForm((f) => ({ ...f, movement_date: e.target.value }))}
             className={`${inputClass} mb-4`}
@@ -535,31 +519,27 @@ export function ProductsPage() {
           />
 
           {movementForm.movement_type === 'sale' && (
-            <>
-              <label className={labelClass}>Payment status</label>
-              <select
-                value={movementForm.payment_status}
-                onChange={(e) =>
-                  setMovementForm((f) => ({ ...f, payment_status: e.target.value as MovementPaymentStatus }))
-                }
-                className={`${inputClass} mb-4`}
-              >
-                {(Object.keys(paymentStatusLabel) as MovementPaymentStatus[]).map((s) => (
-                  <option key={s} value={s}>
-                    {paymentStatusLabel[s]}
-                  </option>
-                ))}
-              </select>
-            </>
+            <select
+              value={movementForm.payment_status}
+              onChange={(e) =>
+                setMovementForm((f) => ({ ...f, payment_status: e.target.value as MovementPaymentStatus }))
+              }
+              className={`${inputClass} mb-4`}
+            >
+              {(Object.keys(paymentStatusLabel) as MovementPaymentStatus[]).map((s) => (
+                <option key={s} value={s}>
+                  {paymentStatusLabel[s]}
+                </option>
+              ))}
+            </select>
           )}
 
-          <label className={labelClass}>Subscriber (if sold/installed for one)</label>
           <select
             value={movementForm.subscriber_id}
             onChange={(e) => setMovementForm((f) => ({ ...f, subscriber_id: e.target.value }))}
             className={`${inputClass} mb-4`}
           >
-            <option value="">None</option>
+            <option value="">Subscriber (if sold/installed for one)</option>
             {subscribers.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
@@ -567,10 +547,10 @@ export function ProductsPage() {
             ))}
           </select>
 
-          <label className={labelClass}>Note</label>
           <input
             value={movementForm.note}
             onChange={(e) => setMovementForm((f) => ({ ...f, note: e.target.value }))}
+            placeholder="Note"
             className={`${inputClass} mb-4`}
           />
 

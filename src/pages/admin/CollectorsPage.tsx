@@ -18,7 +18,6 @@ import { useStaff } from '../../context/StaffContext'
 import { Modal } from '../../components/Modal'
 import {
   inputClass,
-  labelClass,
   primaryButtonClass,
   secondaryButtonClass,
   dangerButtonClass,
@@ -206,17 +205,17 @@ export function CollectorsPage() {
         title={editing ? 'Edit collector' : 'New collector'}
       >
         <form onSubmit={submit}>
-          <label className={labelClass}>Name</label>
           <input
             value={form.name}
             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            placeholder="Name"
             className={`${inputClass} mb-4`}
             required
           />
-          <label className={labelClass}>Phone</label>
           <input
             value={form.phone}
             onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+            placeholder="Phone"
             className={`${inputClass} mb-4`}
           />
           <label className="mb-4 flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300">
@@ -233,22 +232,19 @@ export function CollectorsPage() {
               Login (for this collector to sign in)
             </p>
           </div>
-          <label className={labelClass}>Username</label>
           <input
             value={form.username}
             onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
+            placeholder="Username"
             className={`${inputClass} mb-4`}
             required={!editing}
             autoComplete="off"
           />
-          <label className={labelClass}>
-            Password
-            {editing && existingStaffId ? ' (leave blank to keep the current one)' : ''}
-          </label>
           <input
             type="password"
             value={form.password}
             onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+            placeholder={editing && existingStaffId ? 'Password (leave blank to keep current)' : 'Password'}
             className={`${inputClass} mb-4`}
             required={!editing}
             autoComplete="new-password"

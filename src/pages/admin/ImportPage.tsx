@@ -22,7 +22,6 @@ import {
 import type { ParsedRow, ImportLog, ColumnMapping } from '../../types/import'
 import {
   inputClass,
-  labelClass,
   primaryButtonClass,
   secondaryButtonClass,
   cardClass,
@@ -480,7 +479,6 @@ export function ImportPage() {
                 <div key={name} className={cardClass}>
                   <p className="mb-2 text-sm font-medium text-neutral-800 dark:text-neutral-100">{name}</p>
                   <div className="mb-3">
-                    <label className={labelClass}>Map to existing service</label>
                     <select
                       value=""
                       onChange={(e) =>
@@ -488,7 +486,7 @@ export function ImportPage() {
                       }
                       className={inputClass}
                     >
-                      <option value="">Choose service…</option>
+                      <option value="">Map to existing service…</option>
                       {ref.services.map((s) => (
                         <option key={s.id} value={s.id}>
                           {s.name} ({s.companies?.name})

@@ -10,7 +10,7 @@ import { logActivity } from '../../lib/api/activityLog'
 import { useStaff } from '../../context/StaffContext'
 import type { CompanyDue, CompanyPayment } from '../../types/companyPayments'
 import { Modal } from '../../components/Modal'
-import { inputClass, labelClass, primaryButtonClass, secondaryButtonClass, cardClass } from '../../lib/uiClasses'
+import { inputClass, primaryButtonClass, secondaryButtonClass, cardClass } from '../../lib/uiClasses'
 
 export function CompanyPaymentsPage() {
   const { staff } = useStaff()
@@ -234,28 +234,28 @@ export function CompanyPaymentsPage() {
         title={`Log payment · ${payingCompany?.company_name ?? ''}`}
       >
         <form onSubmit={submit}>
-          <label className={labelClass}>Amount</label>
           <input
             type="number"
             step="0.01"
             min="0"
             value={form.amount}
             onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+            placeholder="Amount"
             className={`${inputClass} mb-4`}
             required
           />
-          <label className={labelClass}>Payment date</label>
           <input
             type="date"
+            aria-label="Payment date"
             value={form.payment_date}
             onChange={(e) => setForm((f) => ({ ...f, payment_date: e.target.value }))}
             className={`${inputClass} mb-4`}
             required
           />
-          <label className={labelClass}>Note</label>
           <input
             value={form.note}
             onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
+            placeholder="Note"
             className={`${inputClass} mb-4`}
           />
           <div className="flex justify-end gap-2">
@@ -275,28 +275,28 @@ export function CompanyPaymentsPage() {
         title="Edit payment"
       >
         <form onSubmit={submitEdit}>
-          <label className={labelClass}>Amount</label>
           <input
             type="number"
             step="0.01"
             min="0"
             value={editForm.amount}
             onChange={(e) => setEditForm((f) => ({ ...f, amount: e.target.value }))}
+            placeholder="Amount"
             className={`${inputClass} mb-4`}
             required
           />
-          <label className={labelClass}>Payment date</label>
           <input
             type="date"
+            aria-label="Payment date"
             value={editForm.payment_date}
             onChange={(e) => setEditForm((f) => ({ ...f, payment_date: e.target.value }))}
             className={`${inputClass} mb-4`}
             required
           />
-          <label className={labelClass}>Note</label>
           <input
             value={editForm.note}
             onChange={(e) => setEditForm((f) => ({ ...f, note: e.target.value }))}
+            placeholder="Note"
             className={`${inputClass} mb-4`}
           />
           <div className="flex justify-end gap-2">

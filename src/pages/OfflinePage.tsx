@@ -14,7 +14,6 @@ import { Modal } from '../components/Modal'
 import { logActivity } from '../lib/api/activityLog'
 import {
   inputClass,
-  labelClass,
   primaryButtonClass,
   secondaryButtonClass,
   cardClass,
@@ -261,34 +260,34 @@ export function OfflinePage() {
         title={`Log payment · ${paymentSub?.name ?? ''}`}
       >
         <form onSubmit={submitPayment}>
-          <label className={labelClass}>Amount</label>
           <input
             type="number"
             step="0.01"
             min="0"
             value={paymentForm.amount}
             onChange={(e) => setPaymentForm((f) => ({ ...f, amount: e.target.value }))}
+            placeholder="Amount"
             className={`${inputClass} mb-4`}
             required
           />
-          <label className={labelClass}>Payment date</label>
           <input
             type="date"
+            aria-label="Payment date"
             value={paymentForm.payment_date}
             onChange={(e) => setPaymentForm((f) => ({ ...f, payment_date: e.target.value }))}
             className={`${inputClass} mb-4`}
             required
           />
-          <label className={labelClass}>Method</label>
           <input
             value={paymentForm.method}
             onChange={(e) => setPaymentForm((f) => ({ ...f, method: e.target.value }))}
+            placeholder="Method"
             className={`${inputClass} mb-4`}
           />
-          <label className={labelClass}>Note</label>
           <input
             value={paymentForm.note}
             onChange={(e) => setPaymentForm((f) => ({ ...f, note: e.target.value }))}
+            placeholder="Note"
             className={`${inputClass} mb-4`}
           />
           <div className="flex justify-end gap-2">
@@ -312,18 +311,18 @@ export function OfflinePage() {
         title={`Postpone · ${postponeInvoice?.period_month ?? ''}`}
       >
         <form onSubmit={submitPostpone}>
-          <label className={labelClass}>New due date</label>
           <input
             type="date"
+            aria-label="New due date"
             value={postponeForm.new_due_date}
             onChange={(e) => setPostponeForm((f) => ({ ...f, new_due_date: e.target.value }))}
             className={`${inputClass} mb-4`}
             required
           />
-          <label className={labelClass}>Reason</label>
           <input
             value={postponeForm.reason}
             onChange={(e) => setPostponeForm((f) => ({ ...f, reason: e.target.value }))}
+            placeholder="Reason"
             className={`${inputClass} mb-4`}
           />
           <div className="flex justify-end gap-2">

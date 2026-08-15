@@ -12,7 +12,6 @@ import { logActivity } from '../../lib/api/activityLog'
 import { useStaff } from '../../context/StaffContext'
 import {
   inputClass,
-  labelClass,
   primaryButtonClass,
   secondaryButtonClass,
   dangerButtonClass,
@@ -177,7 +176,6 @@ export function ServicesPage() {
         title={editing ? 'Edit service' : 'New service'}
       >
         <form onSubmit={submit}>
-          <label className={labelClass}>Company</label>
           <select
             value={form.comp_id}
             onChange={(e) => setForm((f) => ({ ...f, comp_id: e.target.value }))}
@@ -191,39 +189,35 @@ export function ServicesPage() {
             ))}
           </select>
 
-          <label className={labelClass}>Name</label>
           <input
             value={form.name}
             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            placeholder="Name"
             className={`${inputClass} mb-4`}
             required
           />
 
           <div className="mb-4 grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelClass}>Sell price</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={form.sell_price}
-                onChange={(e) => setForm((f) => ({ ...f, sell_price: e.target.value }))}
-                className={inputClass}
-                required
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Paid price</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={form.paid_price}
-                onChange={(e) => setForm((f) => ({ ...f, paid_price: e.target.value }))}
-                className={inputClass}
-                required
-              />
-            </div>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={form.sell_price}
+              onChange={(e) => setForm((f) => ({ ...f, sell_price: e.target.value }))}
+              placeholder="Sell price"
+              className={inputClass}
+              required
+            />
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={form.paid_price}
+              onChange={(e) => setForm((f) => ({ ...f, paid_price: e.target.value }))}
+              placeholder="Paid price"
+              className={inputClass}
+              required
+            />
           </div>
 
           <label className="mb-4 flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300">

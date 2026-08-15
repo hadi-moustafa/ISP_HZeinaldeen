@@ -6,7 +6,6 @@ import { useStaff } from '../../context/StaffContext'
 import { Modal } from '../../components/Modal'
 import {
   inputClass,
-  labelClass,
   primaryButtonClass,
   secondaryButtonClass,
   dangerButtonClass,
@@ -132,17 +131,17 @@ export function OwnersPage() {
         title={editing ? 'Edit owner' : 'New owner'}
       >
         <form onSubmit={submit}>
-          <label className={labelClass}>Name</label>
           <input
             value={form.name}
             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            placeholder="Name"
             className={`${inputClass} mb-4`}
             required
           />
-          <label className={labelClass}>Phone</label>
           <input
             value={form.phone}
             onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+            placeholder="Phone"
             className={`${inputClass} mb-4`}
           />
           <div className="flex justify-end gap-2">
