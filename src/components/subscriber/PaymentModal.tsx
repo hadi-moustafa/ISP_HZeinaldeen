@@ -163,6 +163,7 @@ export function PaymentModal({
     setCollectorId(subscriber.default_collector_id ?? '')
     setPostponeOpen(false)
     setPostponeDays('')
+    setPickerOpen(false)
     setPhoneDraft(subscriber.phone ?? '')
     setNewProductLines([])
     setProductsTouched(false)
@@ -500,7 +501,29 @@ export function PaymentModal({
 
   return (
     <Modal open={Boolean(subscriber)} onClose={onClose} title={`Pay · ${subscriber?.name ?? ''}`}>
-      {flaggedLines ? (
+      {pickerOpen ? (
+        <div>
+          <div className="mb-3 max-h-96 space-y-1 overflow-y-auto">
+            {allProducts.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => addProduct(p)}
+                className="flex w-full items-center justify-between rounded-md px-3 py-2.5 text-left text-sm hover:bg-neutral-50"
+              >
+                <span className="text-neutral-800">{p.name}</span>
+                <span className="text-neutral-500">{p.sell_price.toFixed(2)}</span>
+              </button>
+            ))}
+            {allProducts.length === 0 && <p className="p-3 text-sm text-neutral-500">No products found.</p>}
+          </div>
+          <div className="flex justify-end">
+            <button type="button" onClick={() => setPickerOpen(false)} className={secondaryButtonClass}>
+              Back
+            </button>
+          </div>
+        </div>
+      ) : flaggedLines ? (
         <div>
           <p className="mb-4 text-sm text-neutral-600">
             Some amounts don't match what's normally owed -- choose how to handle each before saving.
@@ -800,23 +823,6 @@ export function PaymentModal({
           </div>
         </form>
       )}
-
-      <Modal open={pickerOpen} onClose={() => setPickerOpen(false)} title="Add a product">
-        <div className="max-h-96 space-y-1 overflow-y-auto">
-          {allProducts.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => addProduct(p)}
-              className="flex w-full items-center justify-between rounded-md px-3 py-2.5 text-left text-sm hover:bg-neutral-50"
-            >
-              <span className="text-neutral-800">{p.name}</span>
-              <span className="text-neutral-500">{p.sell_price.toFixed(2)}</span>
-            </button>
-          ))}
-          {allProducts.length === 0 && <p className="p-3 text-sm text-neutral-500">No products found.</p>}
-        </div>
-      </Modal>
     </Modal>
   )
 }
