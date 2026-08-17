@@ -28,6 +28,21 @@ export async function listSubscribersByExpiryRange(fromDate: string, toDate: str
   return data as unknown as SubscriberWithRelations[]
 }
 
+// Active subscribers whose expiry_date is strictly before fromDate -- i.e.
+// already expired and needing renewal. Used by the "Company payments due"
+// dashboard table's "Have" column to compute what's already come due for
+// each company, as opposed to what's still ahead.
+export async function listSubscribersByExpiryBefore(fromDate: string) {
+  const { data, error } = await supabase
+    .from('subscribers')
+    .select(SUBSCRIBER_SELECT)
+    .eq('connection_status', 'active')
+    .lt('expiry_date', fromDate)
+    .order('name')
+  if (error) throw error
+  return data as unknown as SubscriberWithRelations[]
+}
+
 export async function listSubscribersLite() {
   const { data, error } = await supabase
     .from('subscribers')

@@ -1,5 +1,5 @@
 import { supabase } from '../supabase'
-import { listDebtSubscriberIds, listSubscribersByExpiryRange } from './subscribers'
+import { listDebtSubscriberIds, listSubscribersByExpiryRange, listSubscribersByExpiryBefore } from './subscribers'
 import { listCompanyDues } from './companyPayments'
 import type { MonthlyFinancialRow, MonthlyLogRow } from '../../types/reports'
 import type { SubscriberWithRelations } from '../../types/subscribers'
@@ -245,49 +245,51 @@ export interface CompanyDueRow {
 // to however many companies actually have subscribers in range and to any
 // admin-selected day range (not just the fixed 5-day window).
 //
-// "have" is the company's free/uncommitted balance: total_owed (the full
-// amount the ISP will eventually owe this company, from the `company_dues`
-// view) minus total_paid (what's already been settled) minus what's due
-// today+tomorrow specifically -- a FIXED near-term window, deliberately
-// independent of the "Amount"/"Users" columns' admin-selected day range.
-// It answers "if I paid everything immediately due, would I still be
-// covered overall" -- picking "Next 30 days" to browse the table shouldn't
-// make every company look like it's short, so this never grows with that
-// selection. Confirmed live: a company with $0 due in the next 2 days gets
-// `have == total_owed - total_paid` exactly, unaffected by a wider browse.
+// "have" is the company's free/uncommitted balance:
+//   total_owed (the full recurring amount the ISP owes this company, from
+//   the `company_dues` view, across every active subscriber on its
+//   services) minus already-passed dues (subscribers whose expiry_date is
+//   already behind us and need renewing -- computed from real subscriber
+//   rows, NOT `company_dues.total_paid`, since that column is just
+//   whatever lump sum an admin manually logged on the Company Payments
+//   page and doesn't line up with which subscribers it actually covers)
+//   minus this row's near-term amount (today/tomorrow/the selected coming
+//   days -- the same figure shown in the "Amount" column).
 export async function getCompanyPaymentsDue(days: number): Promise<CompanyDueRow[]> {
   const clampedDays = Math.min(Math.max(Math.trunc(days), 0), 30)
   const fromDate = localDateString(0)
-  const selectedToDate = localDateString(clampedDays)
-  const nearTermToDate = localDateString(1) // today + tomorrow, fixed
-  const widestToDate = clampedDays >= 1 ? selectedToDate : nearTermToDate
+  const toDate = localDateString(clampedDays)
 
-  const [rows, dues] = await Promise.all([listSubscribersByExpiryRange(fromDate, widestToDate), listCompanyDues()])
-  const duesByName = new Map(dues.map((d) => [d.company_name, d]))
+  const [selectedRows, passedRows, dues] = await Promise.all([
+    listSubscribersByExpiryRange(fromDate, toDate),
+    listSubscribersByExpiryBefore(fromDate),
+    listCompanyDues(),
+  ])
+  const totalOwedByName = new Map(dues.map((d) => [d.company_name, d.total_owed]))
 
-  const byCompany = new Map<string, { companyName: string; count: number; amount: number; nearTermAmount: number }>()
-  for (const sub of rows) {
+  const passedByName = new Map<string, number>()
+  for (const sub of passedRows) {
     const companyName = sub.services?.companies?.name
-    if (!companyName || sub.expiry_date === null) continue
+    if (!companyName) continue
+    passedByName.set(companyName, (passedByName.get(companyName) ?? 0) + (sub.services?.paid_price ?? 0))
+  }
+
+  const byCompany = new Map<string, { companyName: string; count: number; amount: number }>()
+  for (const sub of selectedRows) {
+    const companyName = sub.services?.companies?.name
+    if (!companyName) continue
     const owed = sub.services?.paid_price ?? 0
-    const entry = byCompany.get(companyName) ?? { companyName, count: 0, amount: 0, nearTermAmount: 0 }
-    if (sub.expiry_date <= selectedToDate) {
-      entry.count += 1
-      entry.amount += owed
-    }
-    if (sub.expiry_date <= nearTermToDate) {
-      entry.nearTermAmount += owed
-    }
+    const entry = byCompany.get(companyName) ?? { companyName, count: 0, amount: 0 }
+    entry.count += 1
+    entry.amount += owed
     byCompany.set(companyName, entry)
   }
 
   return Array.from(byCompany.values())
-    .filter((row) => row.count > 0)
-    .map(({ nearTermAmount, ...row }) => {
-      const due = duesByName.get(row.companyName)
-      const totalOwed = due?.total_owed ?? 0
-      const totalPaid = due?.total_paid ?? 0
-      return { ...row, have: totalOwed - totalPaid - nearTermAmount }
+    .map((row) => {
+      const totalOwed = totalOwedByName.get(row.companyName) ?? 0
+      const passedAmount = passedByName.get(row.companyName) ?? 0
+      return { ...row, have: totalOwed - passedAmount - row.amount }
     })
     .sort((a, b) => b.amount - a.amount)
 }
