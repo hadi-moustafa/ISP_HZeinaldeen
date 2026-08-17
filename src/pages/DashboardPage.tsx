@@ -54,11 +54,11 @@ const BUCKET_DOT_COLORS = ['bg-red-500', 'bg-amber-500', 'bg-neutral-400']
 
 function ForecastCard({ title, headerRight, children }: { title: string; headerRight?: ReactNode; children: ReactNode }) {
   return (
-    <div className={`${cardClass} mb-4`}>
+    <div className={`${cardClass} mb-4 rounded-2xl`}>
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="h-5 w-1 shrink-0 rounded-full bg-gradient-to-b from-blue-500 to-cyan-400" />
-          <h2 className="text-sm font-bold uppercase tracking-wide text-neutral-900">{title}</h2>
+          <span className="h-4.5 w-1 shrink-0 rounded-full bg-teal-600" />
+          <h2 className="text-[13px] font-extrabold tracking-tight text-neutral-900">{title}</h2>
         </div>
         {headerRight}
       </div>
@@ -71,11 +71,11 @@ function ForecastTile({ color, label, count, amount }: { color: string; label: s
   return (
     <div className="min-w-0 rounded-xl bg-neutral-50 px-2.5 py-2.5">
       <div className="mb-1.5 flex items-center gap-1.5">
-        <span className={`h-2 w-2 shrink-0 rounded-full ${color}`} />
-        <span className="truncate text-[10px] font-medium uppercase tracking-wide text-neutral-500">{label}</span>
+        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${color}`} />
+        <span className="truncate text-[9.5px] font-bold uppercase tracking-wide text-neutral-500">{label}</span>
       </div>
-      <p className="text-xl font-bold text-neutral-900">
-        {count} <span className="text-xs font-medium text-neutral-400">· ${amount.toFixed(0)}</span>
+      <p className="text-[17px] font-extrabold text-neutral-900 tabular-nums">
+        {count} <span className="text-[10.5px] font-semibold text-neutral-400">· ${amount.toFixed(0)}</span>
       </p>
     </div>
   )
@@ -521,55 +521,110 @@ export function DashboardPage() {
 
           {summary && (
             <>
-              {/* Total amount, collected this period, and left to collect together, horizontally -- black/green/red */}
-              <div className={`${cardClass} mb-3 grid grid-cols-3 gap-2 text-center`}>
-                <div>
-                  <p className="text-lg font-bold text-neutral-900">{summary.totalDue.toFixed(2)}</p>
-                  <p className="text-xs text-neutral-500">Total amount</p>
+              {/* Hero: % collected ring + collected/left split */}
+              <div className={`${cardClass} mb-3 rounded-2xl`}>
+                <div className="mb-4 flex items-center gap-4">
+                  <div
+                    className="relative grid h-20 w-20 shrink-0 place-items-center rounded-full"
+                    style={{
+                      background: `conic-gradient(#059669 ${
+                        summary.totalDue > 0
+                          ? Math.min(100, (summary.totalPaymentsCollected / summary.totalDue) * 100)
+                          : 0
+                      }%, #f5f5f5 0)`,
+                    }}
+                  >
+                    <div className="absolute inset-[7px] rounded-full bg-white" />
+                    <p className="relative text-center text-sm font-extrabold text-neutral-900">
+                      {summary.totalDue > 0 ? Math.round((summary.totalPaymentsCollected / summary.totalDue) * 100) : 0}%
+                      <span className="block text-[8.5px] font-bold uppercase tracking-wide text-neutral-400">collected</span>
+                    </p>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-2xl font-extrabold tracking-tight text-neutral-900 tabular-nums">
+                      {summary.totalDue.toFixed(0)}
+                      <span className="ml-1 text-sm font-semibold text-neutral-400">total this period</span>
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-lg font-bold text-emerald-600">{summary.totalPaymentsCollected.toFixed(2)}</p>
-                  <p className="text-xs text-neutral-500">Collected this period</p>
-                  <p className="mt-0.5 text-[10px] text-neutral-400">
-                    Svc {summary.totalPaid.toFixed(2)} · Prod {summary.totalPaymentsProducts.toFixed(2)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-lg font-bold text-rose-600">
-                    {(summary.totalLeft + summary.totalLeftProducts).toFixed(2)}
-                  </p>
-                  <p className="text-xs text-neutral-500">Left to collect</p>
-                  <p className="mt-0.5 text-[10px] text-neutral-400">
-                    Svc {summary.totalLeft.toFixed(2)} · Prod {summary.totalLeftProducts.toFixed(2)}
-                  </p>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="rounded-xl bg-emerald-50 px-3 py-2.5">
+                    <p className="text-base font-extrabold text-emerald-600 tabular-nums">
+                      {summary.totalPaymentsCollected.toFixed(2)}
+                    </p>
+                    <p className="text-[10px] text-neutral-500 tabular-nums">
+                      Svc {summary.totalPaid.toFixed(2)} · Prod {summary.totalPaymentsProducts.toFixed(2)}
+                    </p>
+                    <p className="mt-1 text-[11px] font-medium text-neutral-500">Collected</p>
+                  </div>
+                  <div className="rounded-xl bg-rose-50 px-3 py-2.5">
+                    <p className="text-base font-extrabold text-rose-600 tabular-nums">
+                      {(summary.totalLeft + summary.totalLeftProducts).toFixed(2)}
+                    </p>
+                    <p className="text-[10px] text-neutral-500 tabular-nums">
+                      Svc {summary.totalLeft.toFixed(2)} · Prod {summary.totalLeftProducts.toFixed(2)}
+                    </p>
+                    <p className="mt-1 text-[11px] font-medium text-neutral-500">Left to collect</p>
+                  </div>
                 </div>
               </div>
 
-              {/* Subscribers / paid / unpaid together */}
-              <div className={`${cardClass} mb-3 grid grid-cols-3 gap-2 text-center`}>
-                <div>
-                  <p className="text-xl font-bold text-neutral-900">{summary.totalSubscribers}</p>
-                  <p className="text-xs text-neutral-500">Subscribers</p>
+              {/* Subscribers / paid / unpaid, with progress bars */}
+              <div className="mb-3 grid grid-cols-3 gap-2">
+                <div className={`${cardClass} rounded-2xl text-center`}>
+                  <p className="text-lg font-extrabold text-neutral-900 tabular-nums">{summary.totalSubscribers}</p>
+                  <p className="text-[10.5px] text-neutral-500">Subscribers</p>
                 </div>
-                <div>
-                  <p className="text-xl font-bold text-emerald-600">{summary.paidUsers}</p>
-                  <p className="text-xs text-neutral-500">Paid</p>
+                <div className={`${cardClass} rounded-2xl text-center`}>
+                  <p className="text-lg font-extrabold text-emerald-600 tabular-nums">{summary.paidUsers}</p>
+                  <p className="text-[10.5px] text-neutral-500">Paid</p>
+                  <div className="mt-2 h-1 overflow-hidden rounded-full bg-neutral-100">
+                    <div
+                      className="h-full rounded-full bg-emerald-500"
+                      style={{
+                        width: `${
+                          summary.totalSubscribers > 0 ? (summary.paidUsers / summary.totalSubscribers) * 100 : 0
+                        }%`,
+                      }}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xl font-bold text-red-600">{summary.unpaidUsers}</p>
-                  <p className="text-xs text-neutral-500">Unpaid</p>
+                <div className={`${cardClass} rounded-2xl text-center`}>
+                  <p className="text-lg font-extrabold text-red-600 tabular-nums">{summary.unpaidUsers}</p>
+                  <p className="text-[10.5px] text-neutral-500">Unpaid</p>
+                  <div className="mt-2 h-1 overflow-hidden rounded-full bg-neutral-100">
+                    <div
+                      className="h-full rounded-full bg-red-500"
+                      style={{
+                        width: `${
+                          summary.totalSubscribers > 0 ? (summary.unpaidUsers / summary.totalSubscribers) * 100 : 0
+                        }%`,
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Products: sold count + total payments together */}
-              <div className={`${cardClass} mb-4 grid grid-cols-2 gap-2 text-center`}>
-                <div>
-                  <p className="text-xl font-bold text-neutral-900">{summary.totalSoldProducts}</p>
-                  <p className="text-xs text-neutral-500">Total sold products</p>
+              {/* Products: sold count + total payments, one banded row */}
+              <div className={`${cardClass} mb-4 flex items-center gap-3.5 rounded-2xl`}>
+                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-[11px] bg-teal-50 text-teal-600">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 8v13H3V8" />
+                    <path d="M1 3h22v5H1z" />
+                    <path d="M10 12h4" />
+                  </svg>
                 </div>
-                <div>
-                  <p className="text-xl font-bold text-emerald-600">{summary.totalPaymentsProducts.toFixed(2)}</p>
-                  <p className="text-xs text-neutral-500">Total payments for products</p>
+                <div className="flex flex-1 gap-5">
+                  <div>
+                    <p className="text-base font-extrabold text-neutral-900 tabular-nums">{summary.totalSoldProducts}</p>
+                    <p className="text-[10.5px] text-neutral-500">units sold</p>
+                  </div>
+                  <div>
+                    <p className="text-base font-extrabold text-emerald-600 tabular-nums">
+                      {summary.totalPaymentsProducts.toFixed(2)}
+                    </p>
+                    <p className="text-[10.5px] text-neutral-500">collected for them</p>
+                  </div>
                 </div>
               </div>
             </>
@@ -595,20 +650,20 @@ export function DashboardPage() {
                 </select>
               }
             >
-              <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-xl bg-neutral-50 px-3 py-3">
-                  <p className="text-2xl font-bold text-emerald-600">
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="rounded-xl bg-neutral-50 px-3.5 py-3">
+                  <p className="text-xl font-extrabold text-emerald-600 tabular-nums">
                     {collectionToday.count}{' '}
-                    <span className="text-sm font-medium text-neutral-400">· ${collectionToday.amount.toFixed(0)}</span>
+                    <span className="text-[11.5px] font-semibold text-neutral-400">· ${collectionToday.amount.toFixed(0)}</span>
                   </p>
-                  <p className="text-xs text-neutral-500">subscribers collected today</p>
+                  <p className="mt-0.5 text-[11px] text-neutral-500">subscribers collected today</p>
                 </div>
-                <div className="rounded-xl bg-neutral-50 px-3 py-3">
-                  <p className="text-2xl font-bold text-emerald-600">
+                <div className="rounded-xl bg-neutral-50 px-3.5 py-3">
+                  <p className="text-xl font-extrabold text-emerald-600 tabular-nums">
                     {collectionTotal.count}{' '}
-                    <span className="text-sm font-medium text-neutral-400">· ${collectionTotal.amount.toFixed(0)}</span>
+                    <span className="text-[11.5px] font-semibold text-neutral-400">· ${collectionTotal.amount.toFixed(0)}</span>
                   </p>
-                  <p className="text-xs text-neutral-500">
+                  <p className="mt-0.5 text-[11px] text-neutral-500">
                     in the last {collectionTotal.days} day{collectionTotal.days > 1 ? 's' : ''}
                   </p>
                 </div>
