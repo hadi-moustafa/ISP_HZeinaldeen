@@ -12,7 +12,7 @@ import type { Collector } from '../../types/reference'
 import { useStaff } from '../../context/StaffContext'
 import { logActivity } from '../../lib/api/activityLog'
 import { updateSubscriberFields } from '../../lib/api/subscribers'
-import { openWhatsApp } from '../../lib/whatsapp'
+import { openWhatsApp, receiptMessage, useMessageTemplates } from '../../lib/whatsapp'
 import { round2 } from '../../lib/money'
 import { Modal } from '../Modal'
 import {
@@ -46,6 +46,7 @@ export function InvoicesSection({
   onChanged?: () => void
 }) {
   const { staff } = useStaff()
+  const templates = useMessageTemplates()
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -279,7 +280,7 @@ export function InvoicesSection({
       return
     }
     const receiptUrl = `${window.location.origin}/receipt/${invoice.id}`
-    const message = `Hi ${subscriberName}, here's your receipt for ${invoice.period_month}: ${receiptUrl}`
+    const message = receiptMessage(subscriberName, invoice.period_month, receiptUrl, templates.receipt)
     openWhatsApp(subscriberPhone, message)
   }
 
@@ -294,7 +295,7 @@ export function InvoicesSection({
       onChanged?.()
       if (phone) {
         const receiptUrl = `${window.location.origin}/receipt/${phonePromptInvoice.id}`
-        const message = `Hi ${subscriberName}, here's your receipt for ${phonePromptInvoice.period_month}: ${receiptUrl}`
+        const message = receiptMessage(subscriberName, phonePromptInvoice.period_month, receiptUrl, templates.receipt)
         openWhatsApp(phone, message)
       }
       setPhonePromptInvoice(null)

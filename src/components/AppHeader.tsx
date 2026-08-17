@@ -51,6 +51,7 @@ const groups: { key: string; heading: string; links: NavLinkItem[] }[] = [
       { to: '/admin/import', label: 'Import subscribers', collectorHidden: true },
       { to: '/admin/missing-data', label: 'Missing data', collectorHidden: true },
       { to: '/admin/duplicates', label: 'Duplicate subscribers', collectorHidden: true },
+      { to: '/admin/whatsapp-messages', label: 'WhatsApp Messages', collectorHidden: true },
     ],
   },
   {

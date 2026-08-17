@@ -9,7 +9,7 @@ import {
 import { updateSubscriberFields } from '../../lib/api/subscribers'
 import { listMonthlyLog } from '../../lib/api/reports'
 import { logActivity } from '../../lib/api/activityLog'
-import { openWhatsApp, paidMessage, postponedMessage, debtMessage } from '../../lib/whatsapp'
+import { openWhatsApp, paidMessage, postponedMessage, debtMessage, useMessageTemplates } from '../../lib/whatsapp'
 import { round2 } from '../../lib/money'
 import { useStaff } from '../../context/StaffContext'
 import { Modal } from '../Modal'
@@ -51,6 +51,7 @@ export function PaymentModal({
   monthlyLog: MonthlyLogRow | undefined
 }) {
   const { staff } = useStaff()
+  const templates = useMessageTemplates()
   const [activeSub, setActiveSub] = useState<SubscriberWithRelations | null>(null)
   const [paymentMode, setPaymentMode] = useState<'paid' | 'postponed' | 'debt'>('paid')
   const [paymentForm, setPaymentForm] = useState({
@@ -194,7 +195,7 @@ export function PaymentModal({
           'payment',
           sub.id,
         )
-        if (notify) openWhatsApp(sub.phone, paidMessage(sub.name))
+        if (notify) openWhatsApp(sub.phone, paidMessage(sub.name, templates.paid))
       } else if (paymentMode === 'postponed') {
         if (!log?.invoice_id) throw new Error('No invoice this period to postpone')
         await postponeInvoice(log.invoice_id, postponeForm.new_due_date, postponeForm.reason || null, staff?.id ?? null)
@@ -204,7 +205,7 @@ export function PaymentModal({
           'invoice',
           log.invoice_id,
         )
-        if (notify) openWhatsApp(sub.phone, postponedMessage(sub.name, postponeForm.new_due_date))
+        if (notify) openWhatsApp(sub.phone, postponedMessage(sub.name, postponeForm.new_due_date, templates.postponed))
       } else {
         if (!sub.service_id) throw new Error('Subscriber has no service to base the debt amount on -- pick one above')
         const doubled = debtDoubleAmount(sub)
@@ -215,7 +216,7 @@ export function PaymentModal({
           'subscriber',
           sub.id,
         )
-        if (notify) openWhatsApp(sub.phone, debtMessage(sub.name, doubled))
+        if (notify) openWhatsApp(sub.phone, debtMessage(sub.name, doubled, templates.debt))
       }
       onClose()
       onChanged()
