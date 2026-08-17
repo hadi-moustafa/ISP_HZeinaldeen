@@ -780,13 +780,14 @@ export function DashboardPage() {
                 </div>
               )}
 
-              <div className="space-y-1.5">
-                {expiringList.map((sub) => (
-                  <SubscriberRow key={sub.id} sub={sub} />
-                ))}
-                {expiringList.length === 0 && (
-                  <p className="text-xs text-neutral-400">Nobody expiring in the next {expiringDays} days.</p>
-                )}
+              <div className="rounded-xl bg-neutral-50 px-3.5 py-3">
+                <p className="text-xl font-extrabold text-neutral-900 tabular-nums">
+                  {expiringList.length}{' '}
+                  <span className="text-[11.5px] font-semibold text-neutral-400">
+                    · ${expiringList.reduce((sum, sub) => sum + (sub.services?.sell_price ?? 0), 0).toFixed(0)}
+                  </span>
+                </p>
+                <p className="mt-0.5 text-[11px] text-neutral-500">expiring in the next {expiringDays} days</p>
               </div>
             </ForecastCard>
           )}
