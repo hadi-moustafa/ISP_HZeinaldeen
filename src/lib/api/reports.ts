@@ -232,6 +232,34 @@ export async function getExpiringSubscribers(days: number): Promise<SubscriberWi
   return [...rows].sort((a, b) => (a.expiry_date ?? '').localeCompare(b.expiry_date ?? ''))
 }
 
+export interface CompanyDueRow {
+  companyName: string
+  count: number
+  amount: number
+}
+
+// Per-company breakdown of what's owed for subscribers expiring within
+// [today, today+days] -- backs the "Company payments due" table, adaptive
+// to however many companies actually have subscribers in range and to any
+// admin-selected day range (not just the fixed 5-day window).
+export async function getCompanyPaymentsDue(days: number): Promise<CompanyDueRow[]> {
+  const clampedDays = Math.min(Math.max(Math.trunc(days), 1), 30)
+  const fromDate = localDateString(0)
+  const toDate = localDateString(clampedDays)
+  const rows = await listSubscribersByExpiryRange(fromDate, toDate)
+  const byCompany = new Map<string, CompanyDueRow>()
+  for (const sub of rows) {
+    const companyName = sub.services?.companies?.name
+    if (!companyName) continue
+    const owed = sub.services?.paid_price ?? 0
+    const entry = byCompany.get(companyName) ?? { companyName, count: 0, amount: 0 }
+    entry.count += 1
+    entry.amount += owed
+    byCompany.set(companyName, entry)
+  }
+  return Array.from(byCompany.values()).sort((a, b) => b.amount - a.amount)
+}
+
 export interface CollectedSubscriber {
   subscriberId: string
   name: string

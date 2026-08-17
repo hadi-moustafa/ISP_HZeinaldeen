@@ -10,11 +10,13 @@ import {
   getCollectionTotal,
   getCollectionTodayTotal,
   getCollectionTodaySubscribers,
+  getCompanyPaymentsDue,
   listMonthlyLog,
   type DashboardSummary,
   type ExpiryBucket,
   type CollectionRangeTotal,
   type CollectedSubscriber,
+  type CompanyDueRow,
 } from '../lib/api/reports'
 import { listSubscribers, type SubscriberSearchField } from '../lib/api/subscribers'
 import { listServices } from '../lib/api/services'
@@ -70,7 +72,19 @@ function ForecastCard({ title, headerRight, children }: { title: string; headerR
   )
 }
 
-function ForecastTile({ color, label, count, amount }: { color: string; label: string; count: number; amount: number }) {
+function ForecastTile({
+  color,
+  label,
+  count,
+  amount,
+  breakdown,
+}: {
+  color: string
+  label: string
+  count: number
+  amount: number
+  breakdown?: { label: string; value: number }[]
+}) {
   return (
     <div className="min-w-0 rounded-xl bg-neutral-50 px-2.5 py-2.5">
       <div className="mb-1.5 flex items-center gap-1.5">
@@ -80,6 +94,15 @@ function ForecastTile({ color, label, count, amount }: { color: string; label: s
       <p className="text-[17px] font-extrabold text-neutral-900 tabular-nums">
         {count} <span className="text-[10.5px] font-semibold text-neutral-400">· ${amount.toFixed(0)}</span>
       </p>
+      {breakdown && breakdown.length > 0 && (
+        <div className="mt-1.5 flex flex-col gap-0.5">
+          {breakdown.map((b) => (
+            <p key={b.label} className="truncate text-[10px] font-semibold text-neutral-400 tabular-nums">
+              {b.label} · {b.value}
+            </p>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -113,6 +136,8 @@ export function DashboardPage() {
   const [postponingId, setPostponingId] = useState<string | null>(null)
   const [expiringDays, setExpiringDays] = useState(5)
   const [expiringList, setExpiringList] = useState<SubscriberWithRelations[]>([])
+  const [companyDueDays, setCompanyDueDays] = useState(5)
+  const [companyDueRows, setCompanyDueRows] = useState<CompanyDueRow[] | null>(null)
   const [collectedTodayOpen, setCollectedTodayOpen] = useState(false)
   const [collectedTodayNames, setCollectedTodayNames] = useState<CollectedSubscriber[] | null>(null)
   const [collectedTodayLoading, setCollectedTodayLoading] = useState(false)
@@ -133,6 +158,9 @@ export function DashboardPage() {
     getExpiringSubscribers(expiringDays)
       .then(setExpiringList)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load expiring subscribers'))
+    getCompanyPaymentsDue(companyDueDays)
+      .then(setCompanyDueRows)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load company payments due'))
     setCollectedTodayNames(null)
     listMonthlyLog(currentPeriodMonth())
       .then((rows) => setMonthlyLogBySubscriber(Object.fromEntries(rows.map((row) => [row.subscriber_id, row]))))
@@ -160,6 +188,12 @@ export function DashboardPage() {
       .then(setExpiringList)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load expiring subscribers'))
   }, [expiringDays])
+
+  useEffect(() => {
+    getCompanyPaymentsDue(companyDueDays)
+      .then(setCompanyDueRows)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load company payments due'))
+  }, [companyDueDays])
 
   async function toggleCollectedToday() {
     if (!collectedTodayOpen && collectedTodayNames === null) {
@@ -760,25 +794,14 @@ export function DashboardPage() {
                     label={bucket.label}
                     count={bucket.subscribers.length}
                     amount={bucket.subscribers.reduce((sum, sub) => sum + (sub.services?.sell_price ?? 0), 0)}
+                    breakdown={
+                      i === 0
+                        ? bucket.companyTotals.map((ct) => ({ label: ct.companyName, value: ct.count }))
+                        : undefined
+                    }
                   />
                 ))}
               </div>
-
-              {expiryWatch[0]?.companyTotals.length > 0 && (
-                <div className="mb-3 space-y-1 rounded-xl bg-neutral-50 px-3.5 py-2.5">
-                  <p className="mb-1 text-[10.5px] font-bold uppercase tracking-wide text-neutral-500">
-                    Today, by company
-                  </p>
-                  {expiryWatch[0].companyTotals.map((ct) => (
-                    <div key={ct.companyName} className="flex items-center justify-between text-sm">
-                      <span className="text-neutral-700">{ct.companyName}</span>
-                      <span className="font-semibold text-neutral-900 tabular-nums">
-                        {ct.count} user{ct.count === 1 ? '' : 's'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
 
               <div className="rounded-xl bg-neutral-50 px-3.5 py-3">
                 <p className="text-xl font-extrabold text-neutral-900 tabular-nums">
@@ -792,48 +815,68 @@ export function DashboardPage() {
             </ForecastCard>
           )}
 
-          {/* Per-company payment alerts */}
-          {expiryWatch && (
+          {/* Per-company payment alerts, table form -- adapts to however
+              many companies actually have subscribers due, and to any
+              admin-selected day range. */}
+          {companyDueRows && (
             <ForecastCard
               title="Company payments due"
               headerRight={
-                <Link to="/admin/company-payments/analysis" className="shrink-0 text-xs font-medium text-blue-600">
-                  Full analysis →
-                </Link>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <select
+                    value={companyDueDays}
+                    onChange={(e) => setCompanyDueDays(Number(e.target.value))}
+                    className="rounded-full bg-neutral-50 px-2 py-1 text-xs text-neutral-700"
+                  >
+                    {[5, 10, 20, 30].map((d) => (
+                      <option key={d} value={d}>
+                        Next {d} days
+                      </option>
+                    ))}
+                  </select>
+                  <Link to="/admin/company-payments/analysis" className="text-xs font-medium text-blue-600">
+                    Full analysis →
+                  </Link>
+                </div>
               }
             >
-              <div className="mb-3 grid grid-cols-3 gap-2">
-                {expiryWatch.map((bucket, i) => (
-                  <ForecastTile
-                    key={bucket.date}
-                    color={BUCKET_DOT_COLORS[i]}
-                    label={bucket.label}
-                    count={bucket.companyTotals.length}
-                    amount={bucket.companyTotals.reduce((sum, ct) => sum + ct.amount, 0)}
-                  />
-                ))}
-              </div>
-              <div className="space-y-3">
-                {expiryWatch.map(
-                  (bucket) =>
-                    bucket.companyTotals.length > 0 && (
-                      <div key={bucket.date}>
-                        <p className="mb-1 text-xs font-medium text-neutral-500">{bucket.label}</p>
-                        <div className="space-y-1.5 rounded-xl bg-neutral-50 px-3 py-2">
-                          {bucket.companyTotals.map((ct) => (
-                            <div key={ct.companyName} className="flex items-center justify-between text-sm">
-                              <span className="text-neutral-700">{ct.companyName}</span>
-                              <span className="font-semibold text-neutral-900">{ct.amount.toFixed(2)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ),
-                )}
-                {expiryWatch.every((b) => b.companyTotals.length === 0) && (
-                  <p className="text-xs text-neutral-400">No company payments due in the next 5 days.</p>
-                )}
-              </div>
+              {companyDueRows.length === 0 ? (
+                <p className="text-xs text-neutral-400">No company payments due in the next {companyDueDays} days.</p>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-neutral-100">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-neutral-50 text-left text-[10.5px] font-bold uppercase tracking-wide text-neutral-500">
+                        <th className="px-3 py-2 font-bold">Company</th>
+                        <th className="px-3 py-2 text-right font-bold">Users</th>
+                        <th className="px-3 py-2 text-right font-bold">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-100">
+                      {companyDueRows.map((row) => (
+                        <tr key={row.companyName}>
+                          <td className="truncate px-3 py-2 font-medium text-neutral-800">{row.companyName}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-neutral-600">{row.count}</td>
+                          <td className="px-3 py-2 text-right font-semibold tabular-nums text-neutral-900">
+                            {row.amount.toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-neutral-200 bg-neutral-50">
+                        <td className="px-3 py-2 font-bold text-neutral-700">Total</td>
+                        <td className="px-3 py-2 text-right font-bold tabular-nums text-neutral-700">
+                          {companyDueRows.reduce((sum, r) => sum + r.count, 0)}
+                        </td>
+                        <td className="px-3 py-2 text-right font-bold tabular-nums text-neutral-900">
+                          {companyDueRows.reduce((sum, r) => sum + r.amount, 0).toFixed(2)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
             </ForecastCard>
           )}
 
