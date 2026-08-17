@@ -47,10 +47,9 @@ function statusDotColor(log: MonthlyLogRow | undefined, debt: number): string {
   return 'bg-neutral-300'
 }
 
-// Today / +2 days / +5 days (or their backward-looking equivalents) always
-// render in this fixed red-amber-gray order -- matches the "how urgent" or
-// "how recent" reading left-to-right, independent of bucket index.
-const BUCKET_DOT_COLORS = ['bg-red-500', 'bg-amber-500', 'bg-neutral-400']
+// Today / +5 days always render in this fixed red-gray order -- matches
+// the "how urgent" reading left-to-right, independent of bucket index.
+const BUCKET_DOT_COLORS = ['bg-red-500', 'bg-neutral-400']
 
 function ForecastCard({ title, headerRight, children }: { title: string; headerRight?: ReactNode; children: ReactNode }) {
   return (
@@ -108,6 +107,7 @@ export function DashboardPage() {
 
   const [paymentSub, setPaymentSub] = useState<SubscriberWithRelations | null>(null)
   const [postponingId, setPostponingId] = useState<string | null>(null)
+  const [expiringOpen, setExpiringOpen] = useState(false)
 
   function refreshStats() {
     getDashboardSummary(currentPeriodMonth())
@@ -619,10 +619,24 @@ export function DashboardPage() {
             </ForecastCard>
           )}
 
-          {/* Expiring soon -- who to go collect from */}
+          {/* Expiring soon -- who to go collect from. Collapsed by default
+              so a long subscriber list doesn't push everything else below
+              off-screen; the tiles stay visible either way. */}
           {expiryWatch && (
-            <ForecastCard title="Expiring soon">
-              <div className="mb-3 grid grid-cols-3 gap-2">
+            <ForecastCard
+              title="Expiring soon"
+              headerRight={
+                <button
+                  onClick={() => setExpiringOpen((v) => !v)}
+                  aria-expanded={expiringOpen}
+                  aria-label={expiringOpen ? 'Collapse expiring soon' : 'Expand expiring soon'}
+                  className="flex shrink-0 items-center justify-center rounded-full bg-neutral-50 p-1.5 text-neutral-500"
+                >
+                  <ChevronDown size={16} className={`transition-transform duration-200 ${expiringOpen ? 'rotate-180' : ''}`} />
+                </button>
+              }
+            >
+              <div className={`grid grid-cols-2 gap-2 ${expiringOpen ? 'mb-3' : ''}`}>
                 {expiryWatch.map((bucket, i) => (
                   <ForecastTile
                     key={bucket.date}
@@ -633,31 +647,40 @@ export function DashboardPage() {
                   />
                 ))}
               </div>
-              <div className="space-y-3">
-                {expiryWatch.map(
-                  (bucket) =>
-                    bucket.subscribers.length > 0 && (
-                      <div key={bucket.date}>
-                        <p className="mb-1 text-xs font-medium text-neutral-500">{bucket.label}</p>
-                        <div className="space-y-1.5">
-                          {bucket.subscribers.map((sub) => (
-                            <SubscriberRow key={sub.id} sub={sub} />
-                          ))}
+              {expiringOpen && (
+                <div className="space-y-3">
+                  {expiryWatch.map(
+                    (bucket) =>
+                      bucket.subscribers.length > 0 && (
+                        <div key={bucket.date}>
+                          <p className="mb-1 text-xs font-medium text-neutral-500">{bucket.label}</p>
+                          <div className="space-y-1.5">
+                            {bucket.subscribers.map((sub) => (
+                              <SubscriberRow key={sub.id} sub={sub} />
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    ),
-                )}
-                {expiryWatch.every((b) => b.subscribers.length === 0) && (
-                  <p className="text-xs text-neutral-400">Nobody expiring in the next 5 days.</p>
-                )}
-              </div>
+                      ),
+                  )}
+                  {expiryWatch.every((b) => b.subscribers.length === 0) && (
+                    <p className="text-xs text-neutral-400">Nobody expiring in the next 5 days.</p>
+                  )}
+                </div>
+              )}
             </ForecastCard>
           )}
 
           {/* Per-company payment alerts */}
           {expiryWatch && (
-            <ForecastCard title="Company payments due">
-              <div className="mb-3 grid grid-cols-3 gap-2">
+            <ForecastCard
+              title="Company payments due"
+              headerRight={
+                <Link to="/admin/company-payments/analysis" className="shrink-0 text-xs font-medium text-blue-600">
+                  Full analysis →
+                </Link>
+              }
+            >
+              <div className="mb-3 grid grid-cols-2 gap-2">
                 {expiryWatch.map((bucket, i) => (
                   <ForecastTile
                     key={bucket.date}
