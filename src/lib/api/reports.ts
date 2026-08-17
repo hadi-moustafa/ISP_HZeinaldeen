@@ -245,16 +245,13 @@ export interface CompanyDueRow {
 // to however many companies actually have subscribers in range and to any
 // admin-selected day range (not just the fixed 5-day window).
 //
-// "have" is the company's free/uncommitted balance:
-//   total_owed (the full recurring amount the ISP owes this company, from
-//   the `company_dues` view, across every active subscriber on its
-//   services) minus already-passed dues (subscribers whose expiry_date is
+// "have" is the company's remaining cash cushion:
+//   total_paid (the amount an admin has actually logged for this company
+//   on the Company Payments Analysis page, `company_dues.total_paid`)
+//   minus already-passed dues (active subscribers whose expiry_date is
 //   already behind us and need renewing -- computed from real subscriber
-//   rows, NOT `company_dues.total_paid`, since that column is just
-//   whatever lump sum an admin manually logged on the Company Payments
-//   page and doesn't line up with which subscribers it actually covers)
-//   minus this row's near-term amount (today/tomorrow/the selected coming
-//   days -- the same figure shown in the "Amount" column).
+//   rows) minus this row's near-term amount (today/tomorrow/the selected
+//   coming days -- the same figure shown in the "Amount" column).
 export async function getCompanyPaymentsDue(days: number): Promise<CompanyDueRow[]> {
   const clampedDays = Math.min(Math.max(Math.trunc(days), 0), 30)
   const fromDate = localDateString(0)
@@ -265,7 +262,7 @@ export async function getCompanyPaymentsDue(days: number): Promise<CompanyDueRow
     listSubscribersByExpiryBefore(fromDate),
     listCompanyDues(),
   ])
-  const totalOwedByName = new Map(dues.map((d) => [d.company_name, d.total_owed]))
+  const totalPaidByName = new Map(dues.map((d) => [d.company_name, d.total_paid]))
 
   const passedByName = new Map<string, number>()
   for (const sub of passedRows) {
@@ -287,9 +284,9 @@ export async function getCompanyPaymentsDue(days: number): Promise<CompanyDueRow
 
   return Array.from(byCompany.values())
     .map((row) => {
-      const totalOwed = totalOwedByName.get(row.companyName) ?? 0
+      const totalPaid = totalPaidByName.get(row.companyName) ?? 0
       const passedAmount = passedByName.get(row.companyName) ?? 0
-      return { ...row, have: totalOwed - passedAmount - row.amount }
+      return { ...row, have: totalPaid - (passedAmount + row.amount) }
     })
     .sort((a, b) => b.amount - a.amount)
 }
