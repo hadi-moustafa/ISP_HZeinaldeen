@@ -128,7 +128,7 @@ export interface ExpiryBucket {
   date: string
   label: string
   subscribers: SubscriberWithRelations[]
-  companyTotals: { companyName: string; amount: number }[]
+  companyTotals: { companyName: string; amount: number; count: number }[]
 }
 
 function localDateString(offsetDays: number): string {
@@ -202,18 +202,65 @@ export async function getExpiryWatch(): Promise<ExpiryBucket[]> {
     const subscribers = rows.filter(
       (r) => r.expiry_date !== null && r.expiry_date >= fromDate && r.expiry_date <= toDate,
     )
-    const byCompany = new Map<string, number>()
+    const byCompany = new Map<string, { amount: number; count: number }>()
     for (const sub of subscribers) {
       const companyName = sub.services?.companies?.name
       if (!companyName) continue
       const owed = sub.services?.paid_price ?? 0
-      byCompany.set(companyName, (byCompany.get(companyName) ?? 0) + owed)
+      const entry = byCompany.get(companyName) ?? { amount: 0, count: 0 }
+      entry.amount += owed
+      entry.count += 1
+      byCompany.set(companyName, entry)
     }
     return {
       date: toDate,
       label: w.label,
       subscribers,
-      companyTotals: Array.from(byCompany.entries()).map(([companyName, amount]) => ({ companyName, amount })),
+      companyTotals: Array.from(byCompany.entries()).map(([companyName, v]) => ({ companyName, ...v })),
     }
   })
+}
+
+// Flat, admin-selectable-range list of subscribers expiring within [today,
+// today+days] -- feeds the "Expiring soon" list, independent of the fixed
+// Today/In-2-days/In-5-days urgency tiles above it.
+export async function getExpiringSubscribers(days: number): Promise<SubscriberWithRelations[]> {
+  const clampedDays = Math.min(Math.max(Math.trunc(days), 1), 30)
+  const fromDate = localDateString(0)
+  const toDate = localDateString(clampedDays)
+  const rows = await listSubscribersByExpiryRange(fromDate, toDate)
+  return [...rows].sort((a, b) => (a.expiry_date ?? '').localeCompare(b.expiry_date ?? ''))
+}
+
+export interface CollectedSubscriber {
+  subscriberId: string
+  name: string
+  amount: number
+}
+
+// Who was actually collected from today, and how much -- backs the reveal
+// arrow on the Collected card's "today" tile.
+export async function getCollectionTodaySubscribers(): Promise<CollectedSubscriber[]> {
+  const today = localDateString(0)
+  const { data, error } = await supabase
+    .from('payments')
+    .select('subscriber_id, amount, subscribers(name)')
+    .gte('payment_date', today)
+    .lte('payment_date', today)
+  if (error) throw error
+  const rows = data as unknown as { subscriber_id: string; amount: number; subscribers: { name: string } | null }[]
+  const bySubscriber = new Map<string, CollectedSubscriber>()
+  for (const row of rows) {
+    const existing = bySubscriber.get(row.subscriber_id)
+    if (existing) {
+      existing.amount += row.amount
+    } else {
+      bySubscriber.set(row.subscriber_id, {
+        subscriberId: row.subscriber_id,
+        name: row.subscribers?.name ?? 'Unknown',
+        amount: row.amount,
+      })
+    }
+  }
+  return Array.from(bySubscriber.values()).sort((a, b) => a.name.localeCompare(b.name))
 }

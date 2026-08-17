@@ -6,12 +6,15 @@ import { generateMonthlyInvoices, postponeInvoice, createPeriodInvoice } from '.
 import {
   getDashboardSummary,
   getExpiryWatch,
+  getExpiringSubscribers,
   getCollectionTotal,
   getCollectionTodayTotal,
+  getCollectionTodaySubscribers,
   listMonthlyLog,
   type DashboardSummary,
   type ExpiryBucket,
   type CollectionRangeTotal,
+  type CollectedSubscriber,
 } from '../lib/api/reports'
 import { listSubscribers, type SubscriberSearchField } from '../lib/api/subscribers'
 import { listServices } from '../lib/api/services'
@@ -108,7 +111,11 @@ export function DashboardPage() {
 
   const [paymentSub, setPaymentSub] = useState<SubscriberWithRelations | null>(null)
   const [postponingId, setPostponingId] = useState<string | null>(null)
-  const [expiringOpen, setExpiringOpen] = useState(false)
+  const [expiringDays, setExpiringDays] = useState(5)
+  const [expiringList, setExpiringList] = useState<SubscriberWithRelations[]>([])
+  const [collectedTodayOpen, setCollectedTodayOpen] = useState(false)
+  const [collectedTodayNames, setCollectedTodayNames] = useState<CollectedSubscriber[] | null>(null)
+  const [collectedTodayLoading, setCollectedTodayLoading] = useState(false)
 
   function refreshStats() {
     getDashboardSummary(currentPeriodMonth())
@@ -123,6 +130,10 @@ export function DashboardPage() {
     getCollectionTotal(collectedDays)
       .then(setCollectionTotal)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load collected total'))
+    getExpiringSubscribers(expiringDays)
+      .then(setExpiringList)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load expiring subscribers'))
+    setCollectedTodayNames(null)
     listMonthlyLog(currentPeriodMonth())
       .then((rows) => setMonthlyLogBySubscriber(Object.fromEntries(rows.map((row) => [row.subscriber_id, row]))))
       .catch(() => {})
@@ -143,6 +154,26 @@ export function DashboardPage() {
       .then(setCollectionTotal)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load collected total'))
   }, [collectedDays])
+
+  useEffect(() => {
+    getExpiringSubscribers(expiringDays)
+      .then(setExpiringList)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load expiring subscribers'))
+  }, [expiringDays])
+
+  async function toggleCollectedToday() {
+    if (!collectedTodayOpen && collectedTodayNames === null) {
+      setCollectedTodayLoading(true)
+      try {
+        setCollectedTodayNames(await getCollectionTodaySubscribers())
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load today\'s collections')
+      } finally {
+        setCollectedTodayLoading(false)
+      }
+    }
+    setCollectedTodayOpen((v) => !v)
+  }
 
   const filteredServices = useMemo(
     () => (filters.companyId ? services.filter((s) => s.comp_id === filters.companyId) : services),
@@ -652,10 +683,25 @@ export function DashboardPage() {
             >
               <div className="grid grid-cols-2 gap-2.5">
                 <div className="rounded-xl bg-neutral-50 px-3.5 py-3">
-                  <p className="text-xl font-extrabold text-emerald-600 tabular-nums">
-                    {collectionToday.count}{' '}
-                    <span className="text-[11.5px] font-semibold text-neutral-400">· ${collectionToday.amount.toFixed(0)}</span>
-                  </p>
+                  <div className="flex items-start justify-between gap-1">
+                    <p className="text-xl font-extrabold text-emerald-600 tabular-nums">
+                      {collectionToday.count}{' '}
+                      <span className="text-[11.5px] font-semibold text-neutral-400">
+                        · ${collectionToday.amount.toFixed(0)}
+                      </span>
+                    </p>
+                    <button
+                      onClick={toggleCollectedToday}
+                      aria-expanded={collectedTodayOpen}
+                      aria-label={collectedTodayOpen ? 'Hide names' : 'Show names'}
+                      className="flex shrink-0 items-center justify-center rounded-full bg-white p-1 text-neutral-400 shadow-sm"
+                    >
+                      <ChevronDown
+                        size={13}
+                        className={`transition-transform duration-200 ${collectedTodayOpen ? 'rotate-180' : ''}`}
+                      />
+                    </button>
+                  </div>
                   <p className="mt-0.5 text-[11px] text-neutral-500">subscribers collected today</p>
                 </div>
                 <div className="rounded-xl bg-neutral-50 px-3.5 py-3">
@@ -668,27 +714,45 @@ export function DashboardPage() {
                   </p>
                 </div>
               </div>
+              {collectedTodayOpen && (
+                <div className="mt-2.5 space-y-1 rounded-xl bg-neutral-50 px-3.5 py-2.5">
+                  {collectedTodayLoading && <p className="text-xs text-neutral-400">Loading…</p>}
+                  {!collectedTodayLoading && collectedTodayNames?.length === 0 && (
+                    <p className="text-xs text-neutral-400">Nobody collected from yet today.</p>
+                  )}
+                  {!collectedTodayLoading &&
+                    collectedTodayNames?.map((c) => (
+                      <div key={c.subscriberId} className="flex items-center justify-between text-sm">
+                        <span className="truncate text-neutral-700">{c.name}</span>
+                        <span className="shrink-0 font-semibold text-neutral-900 tabular-nums">
+                          ${c.amount.toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              )}
             </ForecastCard>
           )}
 
-          {/* Expiring soon -- who to go collect from. Collapsed by default
-              so a long subscriber list doesn't push everything else below
-              off-screen; the tiles stay visible either way. */}
+          {/* Expiring soon -- who to go collect from. */}
           {expiryWatch && (
             <ForecastCard
               title="Expiring soon"
               headerRight={
-                <button
-                  onClick={() => setExpiringOpen((v) => !v)}
-                  aria-expanded={expiringOpen}
-                  aria-label={expiringOpen ? 'Collapse expiring soon' : 'Expand expiring soon'}
-                  className="flex shrink-0 items-center justify-center rounded-full bg-neutral-50 p-1.5 text-neutral-500"
+                <select
+                  value={expiringDays}
+                  onChange={(e) => setExpiringDays(Number(e.target.value))}
+                  className="shrink-0 rounded-full bg-neutral-50 px-2 py-1 text-xs text-neutral-700"
                 >
-                  <ChevronDown size={16} className={`transition-transform duration-200 ${expiringOpen ? 'rotate-180' : ''}`} />
-                </button>
+                  {[5, 10, 20, 30].map((d) => (
+                    <option key={d} value={d}>
+                      Next {d} days
+                    </option>
+                  ))}
+                </select>
               }
             >
-              <div className={`grid grid-cols-3 gap-2 ${expiringOpen ? 'mb-3' : ''}`}>
+              <div className="mb-3 grid grid-cols-3 gap-2">
                 {expiryWatch.map((bucket, i) => (
                   <ForecastTile
                     key={bucket.date}
@@ -699,26 +763,31 @@ export function DashboardPage() {
                   />
                 ))}
               </div>
-              {expiringOpen && (
-                <div className="space-y-3">
-                  {expiryWatch.map(
-                    (bucket) =>
-                      bucket.subscribers.length > 0 && (
-                        <div key={bucket.date}>
-                          <p className="mb-1 text-xs font-medium text-neutral-500">{bucket.label}</p>
-                          <div className="space-y-1.5">
-                            {bucket.subscribers.map((sub) => (
-                              <SubscriberRow key={sub.id} sub={sub} />
-                            ))}
-                          </div>
-                        </div>
-                      ),
-                  )}
-                  {expiryWatch.every((b) => b.subscribers.length === 0) && (
-                    <p className="text-xs text-neutral-400">Nobody expiring in the next 5 days.</p>
-                  )}
+
+              {expiryWatch[0]?.companyTotals.length > 0 && (
+                <div className="mb-3 space-y-1 rounded-xl bg-neutral-50 px-3.5 py-2.5">
+                  <p className="mb-1 text-[10.5px] font-bold uppercase tracking-wide text-neutral-500">
+                    Today, by company
+                  </p>
+                  {expiryWatch[0].companyTotals.map((ct) => (
+                    <div key={ct.companyName} className="flex items-center justify-between text-sm">
+                      <span className="text-neutral-700">{ct.companyName}</span>
+                      <span className="font-semibold text-neutral-900 tabular-nums">
+                        {ct.count} user{ct.count === 1 ? '' : 's'}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               )}
+
+              <div className="space-y-1.5">
+                {expiringList.map((sub) => (
+                  <SubscriberRow key={sub.id} sub={sub} />
+                ))}
+                {expiringList.length === 0 && (
+                  <p className="text-xs text-neutral-400">Nobody expiring in the next {expiringDays} days.</p>
+                )}
+              </div>
             </ForecastCard>
           )}
 
