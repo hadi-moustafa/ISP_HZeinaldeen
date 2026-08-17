@@ -245,38 +245,49 @@ export interface CompanyDueRow {
 // to however many companies actually have subscribers in range and to any
 // admin-selected day range (not just the fixed 5-day window).
 //
-// "have" is what's left in the company's running balance after this near-
-// term window is covered: total_owed (the full amount the ISP will
-// eventually owe this company, from the `company_dues` view) minus
-// total_paid (what's already been settled) minus this row's near-term
-// amount (today/tomorrow/the selected coming days, already a subset of
-// total_owed). A negative "have" means even after everything paid so far,
-// the near-term window alone outstrips what's left owed overall -- i.e.
-// the near-term number can't be trusted at face value without more paid in.
+// "have" is the company's free/uncommitted balance: total_owed (the full
+// amount the ISP will eventually owe this company, from the `company_dues`
+// view) minus total_paid (what's already been settled) minus what's due
+// today+tomorrow specifically -- a FIXED near-term window, deliberately
+// independent of the "Amount"/"Users" columns' admin-selected day range.
+// It answers "if I paid everything immediately due, would I still be
+// covered overall" -- picking "Next 30 days" to browse the table shouldn't
+// make every company look like it's short, so this never grows with that
+// selection. Confirmed live: a company with $0 due in the next 2 days gets
+// `have == total_owed - total_paid` exactly, unaffected by a wider browse.
 export async function getCompanyPaymentsDue(days: number): Promise<CompanyDueRow[]> {
   const clampedDays = Math.min(Math.max(Math.trunc(days), 0), 30)
   const fromDate = localDateString(0)
-  const toDate = localDateString(clampedDays)
-  const [rows, dues] = await Promise.all([listSubscribersByExpiryRange(fromDate, toDate), listCompanyDues()])
+  const selectedToDate = localDateString(clampedDays)
+  const nearTermToDate = localDateString(1) // today + tomorrow, fixed
+  const widestToDate = clampedDays >= 1 ? selectedToDate : nearTermToDate
+
+  const [rows, dues] = await Promise.all([listSubscribersByExpiryRange(fromDate, widestToDate), listCompanyDues()])
   const duesByName = new Map(dues.map((d) => [d.company_name, d]))
 
-  const byCompany = new Map<string, { companyName: string; count: number; amount: number }>()
+  const byCompany = new Map<string, { companyName: string; count: number; amount: number; nearTermAmount: number }>()
   for (const sub of rows) {
     const companyName = sub.services?.companies?.name
-    if (!companyName) continue
+    if (!companyName || sub.expiry_date === null) continue
     const owed = sub.services?.paid_price ?? 0
-    const entry = byCompany.get(companyName) ?? { companyName, count: 0, amount: 0 }
-    entry.count += 1
-    entry.amount += owed
+    const entry = byCompany.get(companyName) ?? { companyName, count: 0, amount: 0, nearTermAmount: 0 }
+    if (sub.expiry_date <= selectedToDate) {
+      entry.count += 1
+      entry.amount += owed
+    }
+    if (sub.expiry_date <= nearTermToDate) {
+      entry.nearTermAmount += owed
+    }
     byCompany.set(companyName, entry)
   }
 
   return Array.from(byCompany.values())
-    .map((row) => {
+    .filter((row) => row.count > 0)
+    .map(({ nearTermAmount, ...row }) => {
       const due = duesByName.get(row.companyName)
       const totalOwed = due?.total_owed ?? 0
       const totalPaid = due?.total_paid ?? 0
-      return { ...row, have: totalOwed - totalPaid - row.amount }
+      return { ...row, have: totalOwed - totalPaid - nearTermAmount }
     })
     .sort((a, b) => b.amount - a.amount)
 }
