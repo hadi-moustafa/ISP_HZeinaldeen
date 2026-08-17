@@ -17,6 +17,21 @@ export async function listInvoicesForSubscriber(subscriberId: string) {
   return data as Invoice[]
 }
 
+// Oldest-first, unpaid/partial only -- the Pay modal's Debt row pays these
+// off in this order via pay_subscriber_debt_fifo(). Distinct from
+// listInvoicesForSubscriber above (unfiltered/newest-first, used for
+// history display) -- don't repurpose that one for FIFO payoff math.
+export async function listOpenInvoicesForSubscriber(subscriberId: string) {
+  const { data, error } = await supabase
+    .from('invoices')
+    .select('*')
+    .eq('subscriber_id', subscriberId)
+    .in('status', ['unpaid', 'partial'])
+    .order('period_month', { ascending: true })
+  if (error) throw error
+  return data as Invoice[]
+}
+
 export async function listPaymentsForInvoice(invoiceId: string) {
   const { data, error } = await supabase
     .from('payments')
@@ -156,6 +171,62 @@ export async function createPeriodInvoice(subscriberId: string, serviceId: strin
   })
   if (error) throw error
   return data as string | null
+}
+
+// Pays down a subscriber's existing debt FIFO across their oldest
+// unpaid/partial invoices first (see pay_subscriber_debt_fifo in
+// 0022_pay_modal_engine.sql for the atomic per-invoice split). Returns the
+// amount actually applied -- less than the entered amount means the
+// subscriber's real debt was smaller than what was entered.
+export async function payDebtFifo(input: {
+  subscriberId: string
+  amount: number
+  paymentDate: string
+  method: string
+  note: string | null
+  collectorId: string | null
+  staffId: string | null
+}) {
+  const { data, error } = await supabase.rpc('pay_subscriber_debt_fifo', {
+    p_subscriber_id: input.subscriberId,
+    p_amount: input.amount,
+    p_payment_date: input.paymentDate,
+    p_method: input.method,
+    p_note: input.note,
+    p_collector_id: input.collectorId,
+    p_staff_id: input.staffId,
+  })
+  if (error) throw error
+  return data as number
+}
+
+// "Deduct the overpaid excess from next month's bill" -- find-or-creates
+// next period's invoice (same baseline compute_invoice_amount/
+// create_period_invoice already use) then subtracts the credit, clamped
+// at 0. See apply_next_period_credit in 0022_pay_modal_engine.sql.
+export async function applyNextPeriodCredit(
+  subscriberId: string,
+  serviceId: string,
+  nextPeriodMonth: string,
+  creditAmount: number,
+) {
+  const { error } = await supabase.rpc('apply_next_period_credit', {
+    p_subscriber_id: subscriberId,
+    p_service_id: serviceId,
+    p_next_period_month: nextPeriodMonth,
+    p_credit_amount: creditAmount,
+  })
+  if (error) throw error
+}
+
+// "Msama7" -- forgive an invoice's remaining shortfall instead of letting
+// it roll into next period. sync_invoice_status() already skips
+// recomputing any invoice already status='waived' (0001_init.sql), so
+// this one update is enough to stop compute_invoice_amount/
+// create_period_invoice from ever treating it as still-owed.
+export async function waiveInvoice(invoiceId: string) {
+  const { error } = await supabase.from('invoices').update({ status: 'waived' }).eq('id', invoiceId)
+  if (error) throw error
 }
 
 export async function generateMonthlyInvoices() {

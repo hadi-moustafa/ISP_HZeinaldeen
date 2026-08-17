@@ -37,6 +37,8 @@ export const DEFAULT_TEMPLATES: Record<MessageTemplateKey, string> = {
   postponed: 'عزيزي/عزيزتي {{name}}،\nتم تأجيل موعد دفع اشتراكك إلى تاريخ {{due_date}}.\nيرجى تسديد المبلغ المستحق في هذا التاريخ.',
   debt: 'عزيزي/عزيزتي {{name}}،\nنود إعلامكم أن اشتراككم لا يزال غير مسدد. في حال استمرار التأخير، سيصبح المبلغ المستحق للشهر القادم {{amount}} (ضعف القيمة الاعتيادية).\nيرجى المبادرة بالتسديد في أقرب وقت ممكن.',
   receipt: "Hi {{name}}, here's your receipt for {{period}}: {{receipt_url}}",
+  payment_summary:
+    'عزيزي/عزيزتي {{name}}،\nنؤكد استلام دفعتك بتاريخ {{date}} الساعة {{time}}:\n{{lines}}\nشكراً لتعاملكم معنا.',
 }
 
 export function renderTemplate(template: string, vars: Record<string, string>): string {
@@ -62,6 +64,19 @@ export function debtMessage(
   template: string = DEFAULT_TEMPLATES.debt,
 ) {
   return renderTemplate(template, { name: subscriberName, amount: String(nextMonthAmount) })
+}
+
+// One combined message covering whichever pay-lines (Service/Debt/
+// Products) actually succeeded in a single Save -- used instead of firing
+// off 3 separate wa.me opens, which would try to open/switch to WhatsApp
+// 3 times in a row (wa.me has no way to queue multiple sends).
+export function paymentSummaryMessage(
+  subscriberName: string,
+  lines: string[],
+  template: string = DEFAULT_TEMPLATES.payment_summary,
+) {
+  const { date, time } = formatArabicDateTime(new Date())
+  return renderTemplate(template, { name: subscriberName, lines: lines.join('\n'), date, time })
 }
 
 export function receiptMessage(

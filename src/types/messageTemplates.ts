@@ -1,4 +1,4 @@
-export type MessageTemplateKey = 'paid' | 'postponed' | 'debt' | 'receipt'
+export type MessageTemplateKey = 'paid' | 'postponed' | 'debt' | 'receipt' | 'payment_summary'
 
 export interface MessageTemplate {
   key: MessageTemplateKey

@@ -12,6 +12,7 @@ export interface ProductMovement {
   note: string | null
   movement_date: string
   payment_status: MovementPaymentStatus
+  amount_paid: number
   created_at: string
 }
 
