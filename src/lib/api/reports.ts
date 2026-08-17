@@ -1,5 +1,6 @@
 import { supabase } from '../supabase'
 import { listDebtSubscriberIds, listSubscribersByExpiryRange } from './subscribers'
+import { listCompanyDues } from './companyPayments'
 import type { MonthlyFinancialRow, MonthlyLogRow } from '../../types/reports'
 import type { SubscriberWithRelations } from '../../types/subscribers'
 
@@ -236,18 +237,30 @@ export interface CompanyDueRow {
   companyName: string
   count: number
   amount: number
+  have: number
 }
 
 // Per-company breakdown of what's owed for subscribers expiring within
 // [today, today+days] -- backs the "Company payments due" table, adaptive
 // to however many companies actually have subscribers in range and to any
 // admin-selected day range (not just the fixed 5-day window).
+//
+// "have" is what's left in the company's running balance after this near-
+// term window is covered: total_owed (the full amount the ISP will
+// eventually owe this company, from the `company_dues` view) minus
+// total_paid (what's already been settled) minus this row's near-term
+// amount (today/tomorrow/the selected coming days, already a subset of
+// total_owed). A negative "have" means even after everything paid so far,
+// the near-term window alone outstrips what's left owed overall -- i.e.
+// the near-term number can't be trusted at face value without more paid in.
 export async function getCompanyPaymentsDue(days: number): Promise<CompanyDueRow[]> {
   const clampedDays = Math.min(Math.max(Math.trunc(days), 0), 30)
   const fromDate = localDateString(0)
   const toDate = localDateString(clampedDays)
-  const rows = await listSubscribersByExpiryRange(fromDate, toDate)
-  const byCompany = new Map<string, CompanyDueRow>()
+  const [rows, dues] = await Promise.all([listSubscribersByExpiryRange(fromDate, toDate), listCompanyDues()])
+  const duesByName = new Map(dues.map((d) => [d.company_name, d]))
+
+  const byCompany = new Map<string, { companyName: string; count: number; amount: number }>()
   for (const sub of rows) {
     const companyName = sub.services?.companies?.name
     if (!companyName) continue
@@ -257,7 +270,15 @@ export async function getCompanyPaymentsDue(days: number): Promise<CompanyDueRow
     entry.amount += owed
     byCompany.set(companyName, entry)
   }
-  return Array.from(byCompany.values()).sort((a, b) => b.amount - a.amount)
+
+  return Array.from(byCompany.values())
+    .map((row) => {
+      const due = duesByName.get(row.companyName)
+      const totalOwed = due?.total_owed ?? 0
+      const totalPaid = due?.total_paid ?? 0
+      return { ...row, have: totalOwed - totalPaid - row.amount }
+    })
+    .sort((a, b) => b.amount - a.amount)
 }
 
 export interface CollectedSubscriber {

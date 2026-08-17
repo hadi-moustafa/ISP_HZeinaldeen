@@ -5,15 +5,12 @@ import { isAdmin } from '../lib/permissions'
 import { generateMonthlyInvoices, postponeInvoice, createPeriodInvoice } from '../lib/api/invoices'
 import {
   getDashboardSummary,
-  getExpiryWatch,
-  getExpiringSubscribers,
   getCollectionTotal,
   getCollectionTodayTotal,
   getCollectionTodaySubscribers,
   getCompanyPaymentsDue,
   listMonthlyLog,
   type DashboardSummary,
-  type ExpiryBucket,
   type CollectionRangeTotal,
   type CollectedSubscriber,
   type CompanyDueRow,
@@ -52,11 +49,6 @@ function statusDotColor(log: MonthlyLogRow | undefined, debt: number): string {
   return 'bg-neutral-300'
 }
 
-// Today / +2 days / +5 days always render in this fixed red-amber-gray
-// order -- matches the "how urgent" reading left-to-right, independent of
-// bucket index.
-const BUCKET_DOT_COLORS = ['bg-red-500', 'bg-amber-500', 'bg-neutral-400']
-
 function ForecastCard({ title, headerRight, children }: { title: string; headerRight?: ReactNode; children: ReactNode }) {
   return (
     <div className={`${cardClass} mb-4 rounded-2xl`}>
@@ -72,45 +64,9 @@ function ForecastCard({ title, headerRight, children }: { title: string; headerR
   )
 }
 
-function ForecastTile({
-  color,
-  label,
-  count,
-  amount,
-  breakdown,
-}: {
-  color: string
-  label: string
-  count: number
-  amount: number
-  breakdown?: { label: string; value: number }[]
-}) {
-  return (
-    <div className="min-w-0 rounded-xl bg-neutral-50 px-2.5 py-2.5">
-      <div className="mb-1.5 flex items-center gap-1.5">
-        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${color}`} />
-        <span className="truncate text-[9.5px] font-bold uppercase tracking-wide text-neutral-500">{label}</span>
-      </div>
-      <p className="text-[17px] font-extrabold text-neutral-900 tabular-nums">
-        {count} <span className="text-[10.5px] font-semibold text-neutral-400">· ${amount.toFixed(0)}</span>
-      </p>
-      {breakdown && breakdown.length > 0 && (
-        <div className="mt-1.5 flex flex-col gap-0.5">
-          {breakdown.map((b) => (
-            <p key={b.label} className="truncate text-[10px] font-semibold text-neutral-400 tabular-nums">
-              {b.label} · {b.value}
-            </p>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
 export function DashboardPage() {
   const { staff } = useStaff()
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
-  const [expiryWatch, setExpiryWatch] = useState<ExpiryBucket[] | null>(null)
   const [collectedDays, setCollectedDays] = useState(5)
   const [collectionToday, setCollectionToday] = useState<CollectionRangeTotal | null>(null)
   const [collectionTotal, setCollectionTotal] = useState<CollectionRangeTotal | null>(null)
@@ -134,8 +90,6 @@ export function DashboardPage() {
 
   const [paymentSub, setPaymentSub] = useState<SubscriberWithRelations | null>(null)
   const [postponingId, setPostponingId] = useState<string | null>(null)
-  const [expiringDays, setExpiringDays] = useState(5)
-  const [expiringList, setExpiringList] = useState<SubscriberWithRelations[]>([])
   const [companyDueDays, setCompanyDueDays] = useState(5)
   const [companyDueRows, setCompanyDueRows] = useState<CompanyDueRow[] | null>(null)
   const [collectedTodayOpen, setCollectedTodayOpen] = useState(false)
@@ -146,18 +100,12 @@ export function DashboardPage() {
     getDashboardSummary(currentPeriodMonth())
       .then(setSummary)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load dashboard'))
-    getExpiryWatch()
-      .then(setExpiryWatch)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load expiry watch'))
     getCollectionTodayTotal()
       .then(setCollectionToday)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load today\'s collected total'))
     getCollectionTotal(collectedDays)
       .then(setCollectionTotal)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load collected total'))
-    getExpiringSubscribers(expiringDays)
-      .then(setExpiringList)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load expiring subscribers'))
     getCompanyPaymentsDue(companyDueDays)
       .then(setCompanyDueRows)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load company payments due'))
@@ -182,12 +130,6 @@ export function DashboardPage() {
       .then(setCollectionTotal)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load collected total'))
   }, [collectedDays])
-
-  useEffect(() => {
-    getExpiringSubscribers(expiringDays)
-      .then(setExpiringList)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load expiring subscribers'))
-  }, [expiringDays])
 
   useEffect(() => {
     getCompanyPaymentsDue(companyDueDays)
@@ -768,53 +710,6 @@ export function DashboardPage() {
             </ForecastCard>
           )}
 
-          {/* Expiring soon -- who to go collect from. */}
-          {expiryWatch && (
-            <ForecastCard
-              title="Expiring soon"
-              headerRight={
-                <select
-                  value={expiringDays}
-                  onChange={(e) => setExpiringDays(Number(e.target.value))}
-                  className="shrink-0 rounded-full bg-neutral-50 px-2 py-1 text-xs text-neutral-700"
-                >
-                  {[5, 10, 20, 30].map((d) => (
-                    <option key={d} value={d}>
-                      Next {d} days
-                    </option>
-                  ))}
-                </select>
-              }
-            >
-              <div className="mb-3 grid grid-cols-3 gap-2">
-                {expiryWatch.map((bucket, i) => (
-                  <ForecastTile
-                    key={bucket.date}
-                    color={BUCKET_DOT_COLORS[i]}
-                    label={bucket.label}
-                    count={bucket.subscribers.length}
-                    amount={bucket.subscribers.reduce((sum, sub) => sum + (sub.services?.sell_price ?? 0), 0)}
-                    breakdown={
-                      i === 0
-                        ? bucket.companyTotals.map((ct) => ({ label: ct.companyName, value: ct.count }))
-                        : undefined
-                    }
-                  />
-                ))}
-              </div>
-
-              <div className="rounded-xl bg-neutral-50 px-3.5 py-3">
-                <p className="text-xl font-extrabold text-neutral-900 tabular-nums">
-                  {expiringList.length}{' '}
-                  <span className="text-[11.5px] font-semibold text-neutral-400">
-                    · ${expiringList.reduce((sum, sub) => sum + (sub.services?.sell_price ?? 0), 0).toFixed(0)}
-                  </span>
-                </p>
-                <p className="mt-0.5 text-[11px] text-neutral-500">expiring in the next {expiringDays} days</p>
-              </div>
-            </ForecastCard>
-          )}
-
           {/* Per-company payment alerts, table form -- adapts to however
               many companies actually have subscribers due, and to any
               admin-selected day range. */}
@@ -871,6 +766,7 @@ export function DashboardPage() {
                         <th className="px-3 py-2 font-bold">Company</th>
                         <th className="px-3 py-2 text-right font-bold">Users</th>
                         <th className="px-3 py-2 text-right font-bold">Amount</th>
+                        <th className="px-3 py-2 text-right font-bold">Have</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-neutral-100">
@@ -880,6 +776,13 @@ export function DashboardPage() {
                           <td className="px-3 py-2 text-right tabular-nums text-neutral-600">{row.count}</td>
                           <td className="px-3 py-2 text-right font-semibold tabular-nums text-neutral-900">
                             {row.amount.toFixed(2)}
+                          </td>
+                          <td
+                            className={`px-3 py-2 text-right font-semibold tabular-nums ${
+                              row.have < 0 ? 'text-red-600' : 'text-emerald-600'
+                            }`}
+                          >
+                            {row.have.toFixed(2)}
                           </td>
                         </tr>
                       ))}
@@ -892,6 +795,9 @@ export function DashboardPage() {
                         </td>
                         <td className="px-3 py-2 text-right font-bold tabular-nums text-neutral-900">
                           {companyDueRows.reduce((sum, r) => sum + r.amount, 0).toFixed(2)}
+                        </td>
+                        <td className="px-3 py-2 text-right font-bold tabular-nums text-neutral-700">
+                          {companyDueRows.reduce((sum, r) => sum + r.have, 0).toFixed(2)}
                         </td>
                       </tr>
                     </tfoot>
