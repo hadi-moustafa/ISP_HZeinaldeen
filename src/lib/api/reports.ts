@@ -243,7 +243,7 @@ export interface CompanyDueRow {
 // to however many companies actually have subscribers in range and to any
 // admin-selected day range (not just the fixed 5-day window).
 export async function getCompanyPaymentsDue(days: number): Promise<CompanyDueRow[]> {
-  const clampedDays = Math.min(Math.max(Math.trunc(days), 1), 30)
+  const clampedDays = Math.min(Math.max(Math.trunc(days), 0), 30)
   const fromDate = localDateString(0)
   const toDate = localDateString(clampedDays)
   const rows = await listSubscribersByExpiryRange(fromDate, toDate)

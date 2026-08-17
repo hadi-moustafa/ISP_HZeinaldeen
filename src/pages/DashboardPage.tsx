@@ -828,9 +828,9 @@ export function DashboardPage() {
                     onChange={(e) => setCompanyDueDays(Number(e.target.value))}
                     className="rounded-full bg-neutral-50 px-2 py-1 text-xs text-neutral-700"
                   >
-                    {[5, 10, 20, 30].map((d) => (
+                    {[0, 5, 10, 20, 30].map((d) => (
                       <option key={d} value={d}>
-                        Next {d} days
+                        {d === 0 ? 'Today' : `Next ${d} days`}
                       </option>
                     ))}
                   </select>
@@ -841,7 +841,9 @@ export function DashboardPage() {
               }
             >
               {companyDueRows.length === 0 ? (
-                <p className="text-xs text-neutral-400">No company payments due in the next {companyDueDays} days.</p>
+                <p className="text-xs text-neutral-400">
+                  No company payments due {companyDueDays === 0 ? 'today' : `in the next ${companyDueDays} days`}.
+                </p>
               ) : (
                 <div className="overflow-x-auto rounded-xl border border-neutral-100">
                   <table className="w-full text-sm">
