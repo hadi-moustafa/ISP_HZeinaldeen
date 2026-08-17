@@ -33,7 +33,7 @@ import { FILTER_FIELDS, TEXT_FILTER_FIELDS, type FilterField } from '../lib/subs
 import { AppHeader } from '../components/AppHeader'
 import { PaymentModal } from '../components/subscriber/PaymentModal'
 import { primaryButtonClass, cardClass } from '../lib/uiClasses'
-import { Search, Banknote, Pencil, Clock, ChevronDown } from 'lucide-react'
+import { Search, Banknote, Pencil, Clock, ChevronDown, AlertTriangle } from 'lucide-react'
 
 function currentPeriodMonth() {
   const now = new Date()
@@ -828,9 +828,9 @@ export function DashboardPage() {
                     onChange={(e) => setCompanyDueDays(Number(e.target.value))}
                     className="rounded-full bg-neutral-50 px-2 py-1 text-xs text-neutral-700"
                   >
-                    {[0, 5, 10, 20, 30].map((d) => (
+                    {[0, 1, 5, 10, 20, 30].map((d) => (
                       <option key={d} value={d}>
-                        {d === 0 ? 'Today' : `Next ${d} days`}
+                        {d === 0 ? 'Today' : d === 1 ? 'Tomorrow' : `Next ${d} days`}
                       </option>
                     ))}
                   </select>
@@ -840,6 +840,25 @@ export function DashboardPage() {
                 </div>
               }
             >
+              {(() => {
+                const totalDue = companyDueRows.reduce((sum, r) => sum + r.amount, 0)
+                const collected = summary?.totalPaymentsCollected ?? 0
+                const shortfall = totalDue - collected
+                const isSaturday = new Date().getDay() === 6
+                if (shortfall <= 0) return null
+                return (
+                  <div className="mb-3 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3">
+                    <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-600" />
+                    <p className="text-xs leading-relaxed text-amber-800">
+                      You've collected <span className="font-semibold tabular-nums">${collected.toFixed(2)}</span> this
+                      period but owe <span className="font-semibold tabular-nums">${totalDue.toFixed(2)}</span> to
+                      companies — make sure you have another{' '}
+                      <span className="font-semibold tabular-nums">${shortfall.toFixed(2)}</span> ready.
+                      {isSaturday && ' Also, Whish will be closed tomorrow (Sunday) — collect what you need before then.'}
+                    </p>
+                  </div>
+                )
+              })()}
               {companyDueRows.length === 0 ? (
                 <p className="text-xs text-neutral-400">
                   No company payments due {companyDueDays === 0 ? 'today' : `in the next ${companyDueDays} days`}.
