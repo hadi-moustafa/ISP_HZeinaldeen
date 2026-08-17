@@ -12,15 +12,17 @@ const SUBSCRIBER_SELECT = `
 
 export type SubscriberSearchField = 'name' | 'id' | 'owner' | 'username'
 
-// Active subscribers whose expiry_date is exactly one of the given dates --
-// used by the dashboard's expiry-watch feature (today / +2 / +5 as three
-// separate exact-day snapshots, not a cumulative window).
-export async function listSubscribersByExpiryDates(dates: string[]) {
+// Active subscribers whose expiry_date falls within [fromDate, toDate]
+// inclusive -- used by the dashboard's expiry-watch feature, which buckets
+// this into cumulative windows (today+tomorrow / today..+2 / today..+5),
+// not exact-day snapshots.
+export async function listSubscribersByExpiryRange(fromDate: string, toDate: string) {
   const { data, error } = await supabase
     .from('subscribers')
     .select(SUBSCRIBER_SELECT)
     .eq('connection_status', 'active')
-    .in('expiry_date', dates)
+    .gte('expiry_date', fromDate)
+    .lte('expiry_date', toDate)
     .order('name')
   if (error) throw error
   return data as unknown as SubscriberWithRelations[]

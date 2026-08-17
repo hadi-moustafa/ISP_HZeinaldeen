@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import {
   listCompanyDues,
   listCompanyPayments,
@@ -155,7 +156,12 @@ export function CompanyPaymentsPage() {
 
   return (
     <div>
-      <h1 className="mb-1 text-lg font-semibold text-neutral-900">Company payments</h1>
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <h1 className="text-lg font-semibold text-neutral-900">Company payments</h1>
+        <Link to="/admin/company-payments/analysis" className="text-sm font-medium text-blue-600">
+          Analysis →
+        </Link>
+      </div>
       <p className="mb-4 text-sm text-neutral-500">
         What the ISP owes each reseller -- the sum of each active subscriber's service paid-price --
         against what's actually been paid.

@@ -1,5 +1,5 @@
 import { supabase } from '../supabase'
-import { listDebtSubscriberIds, listSubscribersByExpiryDates } from './subscribers'
+import { listDebtSubscriberIds, listSubscribersByExpiryRange } from './subscribers'
 import type { MonthlyFinancialRow, MonthlyLogRow } from '../../types/reports'
 import type { SubscriberWithRelations } from '../../types/subscribers'
 
@@ -146,6 +146,20 @@ export interface CollectionRangeTotal {
   amount: number
 }
 
+async function collectionTotalForRange(fromDate: string, toDate: string) {
+  const { data, error } = await supabase
+    .from('payments')
+    .select('subscriber_id, amount')
+    .gte('payment_date', fromDate)
+    .lte('payment_date', toDate)
+  if (error) throw error
+  const rows = data as { subscriber_id: string; amount: number }[]
+  return {
+    count: new Set(rows.map((r) => r.subscriber_id)).size,
+    amount: rows.reduce((sum, r) => sum + r.amount, 0),
+  }
+}
+
 // Cumulative total, not exact-day snapshots -- "how many subscribers paid,
 // and how much, across the last N days combined" for an admin-selectable N
 // (1-30, clamped defensively since this feeds a date range query). N=1
@@ -154,35 +168,41 @@ export async function getCollectionTotal(days: number): Promise<CollectionRangeT
   const clampedDays = Math.min(Math.max(Math.trunc(days), 1), 30)
   const fromDate = localDateString(-(clampedDays - 1))
   const toDate = localDateString(0)
-  const { data, error } = await supabase
-    .from('payments')
-    .select('subscriber_id, amount')
-    .gte('payment_date', fromDate)
-    .lte('payment_date', toDate)
-  if (error) throw error
-  const rows = data as { subscriber_id: string; amount: number }[]
-
-  return {
-    days: clampedDays,
-    count: new Set(rows.map((r) => r.subscriber_id)).size,
-    amount: rows.reduce((sum, r) => sum + r.amount, 0),
-  }
+  const { count, amount } = await collectionTotalForRange(fromDate, toDate)
+  return { days: clampedDays, count, amount }
 }
 
-// Three separate, non-overlapping exact-day snapshots (today / +2 / +5),
-// not a cumulative window -- confirmed client intent. Single fetch drives
-// both the "expiring soon, go collect" subscriber list and the per-company
+// "Today" widened to a 2-day window (today + tomorrow), per explicit
+// client ask -- distinct from getCollectionTotal's backward-looking N-day
+// range.
+export async function getCollectionTodayTotal(): Promise<CollectionRangeTotal> {
+  const fromDate = localDateString(0)
+  const toDate = localDateString(1)
+  const { count, amount } = await collectionTotalForRange(fromDate, toDate)
+  return { days: 2, count, amount }
+}
+
+// Cumulative windows, not exact-day snapshots -- "Today" covers today
+// through tomorrow, "In 2 days" covers today through +2, "In 5 days"
+// covers today through +5, each a running sum rather than just the count
+// landing on that one exact day. Single fetch (widest window) drives both
+// the "expiring soon, go collect" subscriber list and the per-company
 // "what we owe them" alert, grouping the same rows two different ways.
 export async function getExpiryWatch(): Promise<ExpiryBucket[]> {
-  const buckets = [
-    { date: localDateString(0), label: 'Today' },
-    { date: localDateString(2), label: 'In 2 days' },
-    { date: localDateString(5), label: 'In 5 days' },
+  const windows = [
+    { toOffset: 1, label: 'Today' },
+    { toOffset: 2, label: 'In 2 days' },
+    { toOffset: 5, label: 'In 5 days' },
   ]
-  const rows = await listSubscribersByExpiryDates(buckets.map((b) => b.date))
+  const fromDate = localDateString(0)
+  const widestToDate = localDateString(windows[windows.length - 1].toOffset)
+  const rows = await listSubscribersByExpiryRange(fromDate, widestToDate)
 
-  return buckets.map((bucket) => {
-    const subscribers = rows.filter((r) => r.expiry_date === bucket.date)
+  return windows.map((w) => {
+    const toDate = localDateString(w.toOffset)
+    const subscribers = rows.filter(
+      (r) => r.expiry_date !== null && r.expiry_date >= fromDate && r.expiry_date <= toDate,
+    )
     const byCompany = new Map<string, number>()
     for (const sub of subscribers) {
       const companyName = sub.services?.companies?.name
@@ -191,8 +211,8 @@ export async function getExpiryWatch(): Promise<ExpiryBucket[]> {
       byCompany.set(companyName, (byCompany.get(companyName) ?? 0) + owed)
     }
     return {
-      date: bucket.date,
-      label: bucket.label,
+      date: toDate,
+      label: w.label,
       subscribers,
       companyTotals: Array.from(byCompany.entries()).map(([companyName, amount]) => ({ companyName, amount })),
     }

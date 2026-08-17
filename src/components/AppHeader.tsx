@@ -58,6 +58,7 @@ const groups: { key: string; heading: string; links: NavLinkItem[] }[] = [
     heading: 'Finance & activity',
     links: [
       { to: '/admin/company-payments', label: 'Company Payments', collectorHidden: true },
+      { to: '/admin/company-payments/analysis', label: 'Company Payments Analysis', collectorHidden: true },
       { to: '/admin/activity-log', label: 'Activity Log', collectorHidden: true },
     ],
   },

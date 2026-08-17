@@ -7,6 +7,7 @@ import {
   getDashboardSummary,
   getExpiryWatch,
   getCollectionTotal,
+  getCollectionTodayTotal,
   listMonthlyLog,
   type DashboardSummary,
   type ExpiryBucket,
@@ -115,7 +116,7 @@ export function DashboardPage() {
     getExpiryWatch()
       .then(setExpiryWatch)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load expiry watch'))
-    getCollectionTotal(1)
+    getCollectionTodayTotal()
       .then(setCollectionToday)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load today\'s collected total'))
     getCollectionTotal(collectedDays)
@@ -603,7 +604,7 @@ export function DashboardPage() {
                     {collectionToday.count}{' '}
                     <span className="text-sm font-medium text-neutral-400">· ${collectionToday.amount.toFixed(0)}</span>
                   </p>
-                  <p className="text-xs text-neutral-500">subscribers collected from today</p>
+                  <p className="text-xs text-neutral-500">subscribers collected today &amp; tomorrow</p>
                 </div>
                 <div className="rounded-xl bg-neutral-50 px-3 py-3">
                   <p className="text-2xl font-bold text-emerald-600">

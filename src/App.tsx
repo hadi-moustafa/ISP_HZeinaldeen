@@ -17,6 +17,7 @@ import { ImportPage } from './pages/admin/ImportPage'
 import { MissingDataPage } from './pages/admin/MissingDataPage'
 import { DuplicateSubscribersPage } from './pages/admin/DuplicateSubscribersPage'
 import { CompanyPaymentsPage } from './pages/admin/CompanyPaymentsPage'
+import { CompanyPaymentsAnalysisPage } from './pages/admin/CompanyPaymentsAnalysisPage'
 import { ActivityLogPage } from './pages/admin/ActivityLogPage'
 import { SubscribersListPage } from './pages/subscribers/SubscribersListPage'
 import { SubscriberFormPage } from './pages/subscribers/SubscriberFormPage'
@@ -59,6 +60,7 @@ function App() {
             <Route path="missing-data" element={<MissingDataPage />} />
             <Route path="duplicates" element={<DuplicateSubscribersPage />} />
             <Route path="company-payments" element={<CompanyPaymentsPage />} />
+            <Route path="company-payments/analysis" element={<CompanyPaymentsAnalysisPage />} />
             <Route path="activity-log" element={<ActivityLogPage />} />
           </Route>
           <Route
