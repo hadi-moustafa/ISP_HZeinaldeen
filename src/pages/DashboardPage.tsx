@@ -47,9 +47,10 @@ function statusDotColor(log: MonthlyLogRow | undefined, debt: number): string {
   return 'bg-neutral-300'
 }
 
-// Today / +5 days always render in this fixed red-gray order -- matches
-// the "how urgent" reading left-to-right, independent of bucket index.
-const BUCKET_DOT_COLORS = ['bg-red-500', 'bg-neutral-400']
+// Today / +2 days / +5 days always render in this fixed red-amber-gray
+// order -- matches the "how urgent" reading left-to-right, independent of
+// bucket index.
+const BUCKET_DOT_COLORS = ['bg-red-500', 'bg-amber-500', 'bg-neutral-400']
 
 function ForecastCard({ title, headerRight, children }: { title: string; headerRight?: ReactNode; children: ReactNode }) {
   return (
@@ -604,7 +605,7 @@ export function DashboardPage() {
                     {collectionToday.count}{' '}
                     <span className="text-sm font-medium text-neutral-400">· ${collectionToday.amount.toFixed(0)}</span>
                   </p>
-                  <p className="text-xs text-neutral-500">subscribers collected today &amp; tomorrow</p>
+                  <p className="text-xs text-neutral-500">subscribers collected today</p>
                 </div>
                 <div className="rounded-xl bg-neutral-50 px-3 py-3">
                   <p className="text-2xl font-bold text-emerald-600">
@@ -636,7 +637,7 @@ export function DashboardPage() {
                 </button>
               }
             >
-              <div className={`grid grid-cols-2 gap-2 ${expiringOpen ? 'mb-3' : ''}`}>
+              <div className={`grid grid-cols-3 gap-2 ${expiringOpen ? 'mb-3' : ''}`}>
                 {expiryWatch.map((bucket, i) => (
                   <ForecastTile
                     key={bucket.date}
@@ -680,7 +681,7 @@ export function DashboardPage() {
                 </Link>
               }
             >
-              <div className="mb-3 grid grid-cols-2 gap-2">
+              <div className="mb-3 grid grid-cols-3 gap-2">
                 {expiryWatch.map((bucket, i) => (
                   <ForecastTile
                     key={bucket.date}

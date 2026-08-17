@@ -172,26 +172,25 @@ export async function getCollectionTotal(days: number): Promise<CollectionRangeT
   return { days: clampedDays, count, amount }
 }
 
-// "Today" widened to a 2-day window (today + tomorrow), per explicit
-// client ask -- distinct from getCollectionTotal's backward-looking N-day
+// Today only -- distinct from getCollectionTotal's backward-looking N-day
 // range.
 export async function getCollectionTodayTotal(): Promise<CollectionRangeTotal> {
-  const fromDate = localDateString(0)
-  const toDate = localDateString(1)
-  const { count, amount } = await collectionTotalForRange(fromDate, toDate)
-  return { days: 2, count, amount }
+  const today = localDateString(0)
+  const { count, amount } = await collectionTotalForRange(today, today)
+  return { days: 1, count, amount }
 }
 
 // Cumulative windows, not exact-day snapshots -- "Today" covers today
-// through tomorrow, "In 5 days" covers today through +5, each a running
-// sum rather than just the count landing on that one exact day. ("In 2
-// days" was dropped as redundant -- it duplicated "Today" almost every
-// day in practice.) Single fetch (widest window) drives both the
-// "expiring soon, go collect" subscriber list and the per-company "what
-// we owe them" alert, grouping the same rows two different ways.
+// only, "In 2 days" merges today + tomorrow, "In 5 days" covers today
+// through +5, each (after "Today") a running sum rather than just the
+// count landing on that one exact day. Single fetch (widest window)
+// drives both the "expiring soon, go collect" subscriber list and the
+// per-company "what we owe them" alert, grouping the same rows two
+// different ways.
 export async function getExpiryWatch(): Promise<ExpiryBucket[]> {
   const windows = [
-    { toOffset: 1, label: 'Today' },
+    { toOffset: 0, label: 'Today' },
+    { toOffset: 1, label: 'In 2 days' },
     { toOffset: 5, label: 'In 5 days' },
   ]
   const fromDate = localDateString(0)
