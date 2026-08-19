@@ -83,6 +83,147 @@ function currentPeriodMonth() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
 }
 
+// Module-level, not nested inside SubscribersListPage -- a component
+// defined inside another component's body gets a brand-new function
+// identity every render, so React treats every card as a different
+// component type and remounts the *entire* list on any parent state
+// change (e.g. toggling one checkbox), which resets scroll position to
+// the top. Hoisting it here with explicit props fixes that: only the
+// props that actually changed cause a re-render, not a remount.
+function SubscriberCard({
+  sub,
+  log,
+  selected,
+  onToggleSelect,
+  menuOpen,
+  onToggleMenu,
+  onDelete,
+  onPay,
+}: {
+  sub: SubscriberWithRelations
+  log: MonthlyLogRow | undefined
+  selected: boolean
+  onToggleSelect: (id: string) => void
+  menuOpen: boolean
+  onToggleMenu: (id: string) => void
+  onDelete: (sub: SubscriberWithRelations) => void
+  onPay: (sub: SubscriberWithRelations) => void
+}) {
+  const navigate = useNavigate()
+  const billingKey = billingKeyFor(log?.status, sub.debt)
+  const style = BILLING_STYLES[billingKey]
+  const pct = log && log.amount_due > 0 ? Math.round((log.amount_paid / log.amount_due) * 100) : 0
+  const addressLine = [sub.addresses?.name, sub.building].filter(Boolean).join(', ')
+
+  return (
+    <div className={`relative rounded-2xl border-l-4 bg-white p-4 shadow-sm dark:bg-neutral-800 ${style.border}`}>
+      <div className="mb-2 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggleSelect(sub.id)}
+            aria-label={`Select ${sub.name}`}
+            className="h-4 w-4 rounded border-neutral-300 text-indigo-600"
+          />
+          {sub.external_username && (
+            <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
+              {sub.external_username}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <span
+            title="Expiry date"
+            className="rounded-md bg-neutral-100 px-2 py-1 text-xs font-medium text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300"
+          >
+            Exp: {sub.expiry_date ? new Date(sub.expiry_date).getUTCDate() : '—'}
+          </span>
+          <div className="relative">
+            <button
+              onClick={() => onToggleMenu(sub.id)}
+              className="relative z-20 p-0.5"
+              aria-label="More actions"
+            >
+              <MoreVertical size={16} className="text-neutral-400" />
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-full z-20 mt-1 w-32 rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-800">
+                <button
+                  onClick={() => navigate(`/subscribers/${sub.id}`)}
+                  className="block w-full px-3 py-1.5 text-left text-sm text-neutral-700 hover:bg-neutral-50 dark:text-neutral-200 dark:hover:bg-neutral-700"
+                >
+                  View
+                </button>
+                <button
+                  onClick={() => navigate(`/subscribers/${sub.id}/edit`)}
+                  className="block w-full px-3 py-1.5 text-left text-sm text-neutral-700 hover:bg-neutral-50 dark:text-neutral-200 dark:hover:bg-neutral-700"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => onDelete(sub)}
+                  className="block w-full px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
+                >
+                  Delete
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <dl className="mb-2 grid grid-cols-[70px_1fr] gap-y-1 text-sm">
+        <dt className="text-neutral-400">Name</dt>
+        <dd className="font-medium text-neutral-800 dark:text-neutral-100">
+          <Link to={`/subscribers/${sub.id}`} className="hover:underline">
+            {sub.name}
+          </Link>
+          {sub.connection_status !== 'active' && (
+            <span className="ml-2 rounded bg-neutral-200 px-1.5 py-0.5 text-[10px] font-medium uppercase text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300">
+              {sub.connection_status}
+            </span>
+          )}
+        </dd>
+        <dt className="text-neutral-400">Address</dt>
+        <dd className="text-neutral-700 dark:text-neutral-300">{addressLine || '—'}</dd>
+        <dt className="text-neutral-400">Company</dt>
+        <dd className="text-neutral-700 dark:text-neutral-300">{sub.company?.name ?? '—'}</dd>
+        <dt className="text-neutral-400">Service</dt>
+        <dd className="font-medium text-neutral-800 dark:text-neutral-100">{sub.services?.name ?? '—'}</dd>
+        <dt className="text-neutral-400">Collector</dt>
+        <dd className="text-neutral-700 dark:text-neutral-300">{sub.default_collector?.name ?? '—'}</dd>
+      </dl>
+
+      <div className="flex items-center gap-2">
+        {log ? (
+          <>
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-700">
+              <div className={`h-full rounded-full ${style.bar}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+            </div>
+            <span className={`shrink-0 text-xs font-bold ${style.amount}`}>{pct}%</span>
+            <span className="shrink-0 text-xs text-neutral-400">
+              {log.amount_paid}/{log.amount_due}
+            </span>
+          </>
+        ) : (
+          <p className="flex-1 text-xs text-neutral-400">No invoice this month</p>
+        )}
+        <button
+          onClick={() => onPay(sub)}
+          title="Log a payment"
+          className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold text-white ${
+            billingKey === 'paid' ? 'bg-emerald-500' : 'bg-neutral-400'
+          }`}
+        >
+          <Banknote size={16} />
+          Pay
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // Superset of the API's SubscriberSearchField: the free-text modes (name/id/
 // owner/username) map straight through to the API's search+searchField
 // mechanism; the rest (phone/nationalId/notes/collector/company/service/
@@ -93,7 +234,6 @@ function currentPeriodMonth() {
 // lib/subscriberFilterFields.ts, shared with the dashboard's filter panel.)
 
 export function SubscribersListPage() {
-  const navigate = useNavigate()
   const { staff } = useStaff()
   const [filters, setFilters] = useState(emptyFilters)
   const [filterField, setFilterField] = useState<FilterField>('name')
@@ -338,122 +478,6 @@ export function SubscribersListPage() {
     }
     return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b))
   }, [displaySubscribers, groupByLocation])
-
-  function SubscriberCard({ sub }: { sub: SubscriberWithRelations }) {
-    const log = monthlyLogBySubscriber[sub.id]
-    const billingKey = billingKeyFor(log?.status, sub.debt)
-    const style = BILLING_STYLES[billingKey]
-    const pct = log && log.amount_due > 0 ? Math.round((log.amount_paid / log.amount_due) * 100) : 0
-    const addressLine = [sub.addresses?.name, sub.building].filter(Boolean).join(', ')
-
-    return (
-      <div className={`relative rounded-2xl border-l-4 bg-white p-4 shadow-sm dark:bg-neutral-800 ${style.border}`}>
-        <div className="mb-2 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={selectedIds.has(sub.id)}
-              onChange={() => toggleSelect(sub.id)}
-              aria-label={`Select ${sub.name}`}
-              className="h-4 w-4 rounded border-neutral-300 text-indigo-600"
-            />
-            {sub.external_username && (
-              <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
-                {sub.external_username}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <span
-              title="Expiry date"
-              className="rounded-md bg-neutral-100 px-2 py-1 text-xs font-medium text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300"
-            >
-              Exp: {sub.expiry_date ? new Date(sub.expiry_date).getUTCDate() : '—'}
-            </span>
-            <div className="relative">
-              <button
-                onClick={() => setOpenCardMenuId(openCardMenuId === sub.id ? null : sub.id)}
-                className="relative z-20 p-0.5"
-                aria-label="More actions"
-              >
-                <MoreVertical size={16} className="text-neutral-400" />
-              </button>
-              {openCardMenuId === sub.id && (
-                <div className="absolute right-0 top-full z-20 mt-1 w-32 rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-800">
-                  <button
-                    onClick={() => navigate(`/subscribers/${sub.id}`)}
-                    className="block w-full px-3 py-1.5 text-left text-sm text-neutral-700 hover:bg-neutral-50 dark:text-neutral-200 dark:hover:bg-neutral-700"
-                  >
-                    View
-                  </button>
-                  <button
-                    onClick={() => navigate(`/subscribers/${sub.id}/edit`)}
-                    className="block w-full px-3 py-1.5 text-left text-sm text-neutral-700 hover:bg-neutral-50 dark:text-neutral-200 dark:hover:bg-neutral-700"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleDelete(sub)}
-                    className="block w-full px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
-                  >
-                    Delete
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <dl className="mb-2 grid grid-cols-[70px_1fr] gap-y-1 text-sm">
-          <dt className="text-neutral-400">Name</dt>
-          <dd className="font-medium text-neutral-800 dark:text-neutral-100">
-            <Link to={`/subscribers/${sub.id}`} className="hover:underline">
-              {sub.name}
-            </Link>
-            {sub.connection_status !== 'active' && (
-              <span className="ml-2 rounded bg-neutral-200 px-1.5 py-0.5 text-[10px] font-medium uppercase text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300">
-                {sub.connection_status}
-              </span>
-            )}
-          </dd>
-          <dt className="text-neutral-400">Address</dt>
-          <dd className="text-neutral-700 dark:text-neutral-300">{addressLine || '—'}</dd>
-          <dt className="text-neutral-400">Company</dt>
-          <dd className="text-neutral-700 dark:text-neutral-300">{sub.company?.name ?? '—'}</dd>
-          <dt className="text-neutral-400">Service</dt>
-          <dd className="font-medium text-neutral-800 dark:text-neutral-100">{sub.services?.name ?? '—'}</dd>
-          <dt className="text-neutral-400">Collector</dt>
-          <dd className="text-neutral-700 dark:text-neutral-300">{sub.default_collector?.name ?? '—'}</dd>
-        </dl>
-
-        <div className="flex items-center gap-2">
-          {log ? (
-            <>
-              <div className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-700">
-                <div className={`h-full rounded-full ${style.bar}`} style={{ width: `${Math.min(pct, 100)}%` }} />
-              </div>
-              <span className={`shrink-0 text-xs font-bold ${style.amount}`}>{pct}%</span>
-              <span className="shrink-0 text-xs text-neutral-400">
-                {log.amount_paid}/{log.amount_due}
-              </span>
-            </>
-          ) : (
-            <p className="flex-1 text-xs text-neutral-400">No invoice this month</p>
-          )}
-          <button
-            onClick={() => openPaymentModal(sub)}
-            title="Log a payment"
-            className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold text-white ${
-              billingKey === 'paid' ? 'bg-emerald-500' : 'bg-neutral-400'
-            }`}
-          >
-            <Banknote size={16} />
-            Pay
-          </button>
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div>
@@ -766,7 +790,17 @@ export function SubscribersListPage() {
               </h2>
               <div className="space-y-3">
                 {subs.map((sub) => (
-                  <SubscriberCard key={sub.id} sub={sub} />
+                  <SubscriberCard
+                    key={sub.id}
+                    sub={sub}
+                    log={monthlyLogBySubscriber[sub.id]}
+                    selected={selectedIds.has(sub.id)}
+                    onToggleSelect={toggleSelect}
+                    menuOpen={openCardMenuId === sub.id}
+                    onToggleMenu={(id) => setOpenCardMenuId(openCardMenuId === id ? null : id)}
+                    onDelete={handleDelete}
+                    onPay={openPaymentModal}
+                  />
                 ))}
               </div>
             </div>
@@ -778,7 +812,17 @@ export function SubscribersListPage() {
       ) : (
         <div className="space-y-3">
           {displaySubscribers.map((sub) => (
-            <SubscriberCard key={sub.id} sub={sub} />
+            <SubscriberCard
+              key={sub.id}
+              sub={sub}
+              log={monthlyLogBySubscriber[sub.id]}
+              selected={selectedIds.has(sub.id)}
+              onToggleSelect={toggleSelect}
+              menuOpen={openCardMenuId === sub.id}
+              onToggleMenu={(id) => setOpenCardMenuId(openCardMenuId === id ? null : id)}
+              onDelete={handleDelete}
+              onPay={openPaymentModal}
+            />
           ))}
           {!loading && subscribers.length === 0 && (
             <p className="text-neutral-500 dark:text-neutral-400">No subscribers match these filters.</p>
