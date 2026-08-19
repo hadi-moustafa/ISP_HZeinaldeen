@@ -10,7 +10,9 @@ import { cardClass } from '../../lib/uiClasses'
 // workflow. Sourced from the same `company_dues` view (active subscribers'
 // services.paid_price, see companyPayments.ts) so the numbers here always
 // match what Company Payments shows -- this page is purely a different lens
-// on the same underlying totals.
+// on the same underlying totals. "Paid" is scoped to the current calendar
+// month and resets automatically when the month rolls over -- no payment
+// history is ever deleted, this view just stops summing prior months in.
 export function CompanyPaymentsAnalysisPage() {
   const [dues, setDues] = useState<CompanyDue[]>([])
   const [loading, setLoading] = useState(true)
@@ -55,7 +57,7 @@ export function CompanyPaymentsAnalysisPage() {
           </div>
           <div className="px-3 py-4 text-center">
             <p className="text-xl font-bold text-emerald-600">{totals.totalPaid.toFixed(2)}</p>
-            <p className="text-xs text-neutral-500">Total paid</p>
+            <p className="text-xs text-neutral-500">Paid this month</p>
           </div>
           <div className="px-3 py-4 text-center">
             <p className="text-xl font-bold text-red-600">{totals.totalBalance.toFixed(2)}</p>
@@ -93,7 +95,7 @@ export function CompanyPaymentsAnalysisPage() {
                 </div>
                 <div className="rounded-lg bg-neutral-50 px-2 py-2">
                   <p className="text-sm font-semibold text-emerald-600">{due.total_paid.toFixed(2)}</p>
-                  <p className="text-[10px] uppercase tracking-wide text-neutral-400">Paid</p>
+                  <p className="text-[10px] uppercase tracking-wide text-neutral-400">Paid this month</p>
                 </div>
                 <div className="rounded-lg bg-neutral-50 px-2 py-2">
                   <p className={`text-sm font-semibold ${balance > 0 ? 'text-red-600' : 'text-neutral-900'}`}>

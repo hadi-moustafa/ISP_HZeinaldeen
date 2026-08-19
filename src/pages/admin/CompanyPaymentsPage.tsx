@@ -164,7 +164,8 @@ export function CompanyPaymentsPage() {
       </div>
       <p className="mb-4 text-sm text-neutral-500">
         What the ISP owes each reseller -- the sum of each active subscriber's service paid-price --
-        against what's actually been paid.
+        against what's been paid this month. "Paid" resets automatically at the start of each month;
+        past payments are never deleted, just no longer counted toward the current balance.
       </p>
 
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
@@ -179,7 +180,7 @@ export function CompanyPaymentsPage() {
                 <div>
                   <p className="font-medium text-neutral-900">{due.company_name}</p>
                   <p className="text-sm text-neutral-500">
-                    Owed {due.total_owed.toFixed(2)} · Paid {due.total_paid.toFixed(2)}
+                    Owed {due.total_owed.toFixed(2)} · Paid this month {due.total_paid.toFixed(2)}
                   </p>
                   <p className={`text-sm font-semibold ${balance > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
                     Balance {balance.toFixed(2)}

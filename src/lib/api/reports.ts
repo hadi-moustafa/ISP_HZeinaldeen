@@ -246,12 +246,14 @@ export interface CompanyDueRow {
 // admin-selected day range (not just the fixed 5-day window).
 //
 // "have" is the company's remaining cash cushion:
-//   total_paid (the amount an admin has actually logged for this company
-//   on the Company Payments Analysis page, `company_dues.total_paid`)
-//   minus already-passed dues (active subscribers whose expiry_date is
-//   already behind us and need renewing -- computed from real subscriber
-//   rows) minus this row's near-term amount (today/tomorrow/the selected
-//   coming days -- the same figure shown in the "Amount" column).
+//   total_paid (what's been paid to this company so far THIS MONTH --
+//   `company_dues.total_paid` resets automatically at each month
+//   boundary, see 0024_company_dues_paid_this_month.sql -- same figure
+//   shown on the Company Payments Analysis page) minus already-passed
+//   dues (active subscribers whose expiry_date is already behind us and
+//   need renewing -- computed from real subscriber rows) minus this
+//   row's near-term amount (today/tomorrow/the selected coming days --
+//   the same figure shown in the "Amount" column).
 export async function getCompanyPaymentsDue(days: number): Promise<CompanyDueRow[]> {
   const clampedDays = Math.min(Math.max(Math.trunc(days), 0), 30)
   const fromDate = localDateString(0)
