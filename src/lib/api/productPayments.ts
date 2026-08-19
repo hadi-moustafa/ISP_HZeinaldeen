@@ -56,6 +56,47 @@ export async function recordProductSalePayment(input: {
   if (error) throw error
 }
 
+// General-purpose product sale -- the Product Sale page's line-item
+// version of recordProductSalePayment above: arbitrary quantity (not
+// pinned to 1) and a nullable subscriberId so a sale can go to an
+// existing subscriber OR a walk-in customer with no subscriber record at
+// all (outsideCustomerName folded into the note in that case, since
+// product_movements has no dedicated column for a non-subscriber buyer).
+export async function recordProductSale(input: {
+  productId: string
+  subscriberId: string | null
+  outsideCustomerName: string | null
+  staffId: string | null
+  quantity: number
+  unitPrice: number
+  amountPaid: number
+  movementDate: string
+  note: string | null
+}) {
+  const total = input.unitPrice * input.quantity
+  const paymentStatus: MovementPaymentStatus =
+    input.amountPaid <= 0 ? 'unpaid' : input.amountPaid >= total ? 'paid' : 'partial'
+  const note =
+    [input.outsideCustomerName ? `Customer: ${input.outsideCustomerName}` : null, input.note].filter(Boolean).join(' · ') ||
+    null
+  const movement = await createMovement({
+    product_id: input.productId,
+    movement_type: 'sale',
+    quantity: -input.quantity,
+    unit_price: input.unitPrice,
+    subscriber_id: input.subscriberId,
+    staff_id: input.staffId,
+    note,
+    movement_date: input.movementDate,
+    payment_status: paymentStatus,
+  })
+  const { error } = await supabase
+    .from('product_movements')
+    .update({ amount_paid: Math.min(input.amountPaid, total) })
+    .eq('id', movement.id)
+  if (error) throw error
+}
+
 // "Msama7" for a product sale -- forgive the remaining balance, mark it
 // paid without a matching amount_paid. Thin wrapper naming the intent at
 // this call site distinctly from the inventory page's own inline

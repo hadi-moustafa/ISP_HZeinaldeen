@@ -13,6 +13,7 @@ import { CollectorsPage } from './pages/admin/CollectorsPage'
 import { OwnersPage } from './pages/admin/OwnersPage'
 import { AddressesPage } from './pages/admin/AddressesPage'
 import { ProductsPage } from './pages/admin/ProductsPage'
+import { ProductSalePage } from './pages/admin/ProductSalePage'
 import { ImportPage } from './pages/admin/ImportPage'
 import { MissingDataPage } from './pages/admin/MissingDataPage'
 import { DuplicateSubscribersPage } from './pages/admin/DuplicateSubscribersPage'
@@ -57,6 +58,7 @@ function App() {
             <Route path="owners" element={<OwnersPage />} />
             <Route path="addresses" element={<AddressesPage />} />
             <Route path="products" element={<ProductsPage />} />
+            <Route path="product-sale" element={<ProductSalePage />} />
             <Route path="import" element={<ImportPage />} />
             <Route path="missing-data" element={<MissingDataPage />} />
             <Route path="duplicates" element={<DuplicateSubscribersPage />} />

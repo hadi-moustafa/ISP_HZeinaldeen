@@ -633,6 +633,12 @@ export function DashboardPage() {
                     <p className="text-[10.5px] text-neutral-500">collected for them</p>
                   </div>
                 </div>
+                <Link
+                  to="/admin/product-sale"
+                  className="shrink-0 rounded-full bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white"
+                >
+                  Sell →
+                </Link>
               </div>
             </>
           )}

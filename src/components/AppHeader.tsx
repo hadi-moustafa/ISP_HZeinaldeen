@@ -42,6 +42,7 @@ const groups: { key: string; heading: string; links: NavLinkItem[] }[] = [
       { to: '/admin/owners', label: 'Owners', collectorHidden: true },
       { to: '/admin/addresses', label: 'Addresses', collectorHidden: true },
       { to: '/admin/products', label: 'Products', collectorHidden: true },
+      { to: '/admin/product-sale', label: 'Product Sale' },
     ],
   },
   {
