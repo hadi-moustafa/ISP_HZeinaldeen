@@ -97,9 +97,6 @@ export function MissingDataPage() {
 
   return (
     <div>
-      <h1 className="mb-1 text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-        Subscribers with missing data
-      </h1>
       <p className="mb-4 text-sm text-neutral-600 dark:text-neutral-300">
         Subscribers missing a phone, address, nationality, or building — commonly sparse in
         Excel imports. Fill in what you have; a subscriber drops off this list once everything here

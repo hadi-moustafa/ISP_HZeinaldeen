@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { StaffProvider } from './context/StaffContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AdminLayout } from './components/AdminLayout'
@@ -7,19 +7,13 @@ import { ReportsLayout } from './components/ReportsLayout'
 import { LoginPage } from './pages/LoginPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { ReceiptPage } from './pages/ReceiptPage'
-import { CompaniesPage } from './pages/admin/CompaniesPage'
-import { ServicesPage } from './pages/admin/ServicesPage'
+import { CompanyPage } from './pages/admin/CompanyPage'
 import { CollectorsPage } from './pages/admin/CollectorsPage'
 import { OwnersPage } from './pages/admin/OwnersPage'
 import { AddressesPage } from './pages/admin/AddressesPage'
-import { ProductsPage } from './pages/admin/ProductsPage'
-import { ProductSalePage } from './pages/admin/ProductSalePage'
-import { ImportPage } from './pages/admin/ImportPage'
-import { MissingDataPage } from './pages/admin/MissingDataPage'
-import { DuplicateSubscribersPage } from './pages/admin/DuplicateSubscribersPage'
+import { ProductsHubPage } from './pages/admin/ProductsHubPage'
+import { SubscriberToolsPage } from './pages/admin/SubscriberToolsPage'
 import { WhatsAppMessagesPage } from './pages/admin/WhatsAppMessagesPage'
-import { CompanyPaymentsPage } from './pages/admin/CompanyPaymentsPage'
-import { CompanyPaymentsAnalysisPage } from './pages/admin/CompanyPaymentsAnalysisPage'
 import { ActivityLogPage } from './pages/admin/ActivityLogPage'
 import { SubscribersListPage } from './pages/subscribers/SubscribersListPage'
 import { SubscriberFormPage } from './pages/subscribers/SubscriberFormPage'
@@ -52,20 +46,34 @@ function App() {
               </ProtectedRoute>
             }
           >
-            <Route path="companies" element={<CompaniesPage />} />
-            <Route path="services" element={<ServicesPage />} />
+            <Route path="company" element={<CompanyPage />} />
             <Route path="collectors" element={<CollectorsPage />} />
             <Route path="owners" element={<OwnersPage />} />
             <Route path="addresses" element={<AddressesPage />} />
-            <Route path="products" element={<ProductsPage />} />
-            <Route path="product-sale" element={<ProductSalePage />} />
-            <Route path="import" element={<ImportPage />} />
-            <Route path="missing-data" element={<MissingDataPage />} />
-            <Route path="duplicates" element={<DuplicateSubscribersPage />} />
+            <Route path="products" element={<ProductsHubPage />} />
+            <Route path="subscriber-tools" element={<SubscriberToolsPage />} />
             <Route path="whatsapp-messages" element={<WhatsAppMessagesPage />} />
-            <Route path="company-payments" element={<CompanyPaymentsPage />} />
-            <Route path="company-payments/analysis" element={<CompanyPaymentsAnalysisPage />} />
             <Route path="activity-log" element={<ActivityLogPage />} />
+
+            {/* Old routes consolidated above -- redirect so no existing
+                bookmark or link 404s. */}
+            <Route path="companies" element={<Navigate to="/admin/company?tab=companies" replace />} />
+            <Route path="services" element={<Navigate to="/admin/company?tab=services" replace />} />
+            <Route path="company-payments" element={<Navigate to="/admin/company?tab=payments" replace />} />
+            <Route
+              path="company-payments/analysis"
+              element={<Navigate to="/admin/company?tab=analysis" replace />}
+            />
+            <Route path="product-sale" element={<Navigate to="/admin/products?tab=sell" replace />} />
+            <Route path="import" element={<Navigate to="/admin/subscriber-tools?tab=import" replace />} />
+            <Route
+              path="missing-data"
+              element={<Navigate to="/admin/subscriber-tools?tab=missing" replace />}
+            />
+            <Route
+              path="duplicates"
+              element={<Navigate to="/admin/subscriber-tools?tab=duplicates" replace />}
+            />
           </Route>
           <Route
             path="/subscribers"

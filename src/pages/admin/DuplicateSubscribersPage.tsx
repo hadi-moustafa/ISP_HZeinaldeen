@@ -22,9 +22,6 @@ export function DuplicateSubscribersPage() {
 
   return (
     <div>
-      <h1 className="mb-1 text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-        Flagged duplicate subscribers
-      </h1>
       <p className="mb-4 text-sm text-neutral-600 dark:text-neutral-300">
         Subscribers sharing the same username or the same name — review and fix, merge, or delete
         the wrong one manually. Nothing here is changed automatically.

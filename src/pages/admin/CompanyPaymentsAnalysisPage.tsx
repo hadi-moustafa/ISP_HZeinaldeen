@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { listCompanyDues } from '../../lib/api/companyPayments'
 import type { CompanyDue } from '../../types/companyPayments'
 import { cardClass } from '../../lib/uiClasses'
@@ -38,12 +37,6 @@ export function CompanyPaymentsAnalysisPage() {
 
   return (
     <div>
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <h1 className="text-lg font-semibold text-neutral-900">Company payments analysis</h1>
-        <Link to="/admin/company-payments" className="text-sm font-medium text-blue-600">
-          Log a payment →
-        </Link>
-      </div>
       <p className="mb-4 text-sm text-neutral-500">What each company needs from us, at a glance.</p>
 
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}

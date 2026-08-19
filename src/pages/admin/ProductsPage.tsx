@@ -249,18 +249,13 @@ export function ProductsPage() {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-          Products
-        </h1>
-        <div className="flex flex-wrap gap-2">
-          <button onClick={handleExport} className={secondaryButtonClass}>
-            Export to Excel
-          </button>
-          <button onClick={openCreate} className={primaryButtonClass}>
-            + New product
-          </button>
-        </div>
+      <div className="mb-4 flex flex-wrap justify-end gap-2">
+        <button onClick={handleExport} className={secondaryButtonClass}>
+          Export to Excel
+        </button>
+        <button onClick={openCreate} className={primaryButtonClass}>
+          + New product
+        </button>
       </div>
 
       {error && <p className="mb-4 text-sm text-red-600 dark:text-red-400">{error}</p>}

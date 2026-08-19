@@ -36,33 +36,26 @@ const groups: { key: string; heading: string; links: NavLinkItem[] }[] = [
     key: 'reference',
     heading: 'Reference data',
     links: [
-      { to: '/admin/companies', label: 'Companies', collectorHidden: true },
-      { to: '/admin/services', label: 'Services', collectorHidden: true },
+      { to: '/admin/company', label: 'Company', collectorHidden: true },
       { to: '/admin/collectors', label: 'Collectors', collectorHidden: true },
       { to: '/admin/owners', label: 'Owners', collectorHidden: true },
       { to: '/admin/addresses', label: 'Addresses', collectorHidden: true },
       { to: '/admin/products', label: 'Products', collectorHidden: true },
-      { to: '/admin/product-sale', label: 'Product Sale' },
+      { to: '/admin/products?tab=sell', label: 'Sell a product' },
     ],
   },
   {
     key: 'subscriber-tools',
     heading: 'Subscriber tools',
     links: [
-      { to: '/admin/import', label: 'Import subscribers', collectorHidden: true },
-      { to: '/admin/missing-data', label: 'Missing data', collectorHidden: true },
-      { to: '/admin/duplicates', label: 'Duplicate subscribers', collectorHidden: true },
+      { to: '/admin/subscriber-tools', label: 'Import / missing data / duplicates', collectorHidden: true },
       { to: '/admin/whatsapp-messages', label: 'WhatsApp Messages', collectorHidden: true },
     ],
   },
   {
     key: 'finance',
     heading: 'Finance & activity',
-    links: [
-      { to: '/admin/company-payments', label: 'Company Payments', collectorHidden: true },
-      { to: '/admin/company-payments/analysis', label: 'Company Payments Analysis', collectorHidden: true },
-      { to: '/admin/activity-log', label: 'Activity Log', collectorHidden: true },
-    ],
+    links: [{ to: '/admin/activity-log', label: 'Activity Log', collectorHidden: true }],
   },
 ]
 

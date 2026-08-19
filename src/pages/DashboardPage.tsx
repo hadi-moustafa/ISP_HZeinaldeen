@@ -634,7 +634,7 @@ export function DashboardPage() {
                   </div>
                 </div>
                 <Link
-                  to="/admin/product-sale"
+                  to="/admin/products?tab=sell"
                   className="shrink-0 rounded-full bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white"
                 >
                   Sell →
@@ -735,7 +735,7 @@ export function DashboardPage() {
                       </option>
                     ))}
                   </select>
-                  <Link to="/admin/company-payments/analysis" className="text-xs font-medium text-blue-600">
+                  <Link to="/admin/company?tab=analysis" className="text-xs font-medium text-blue-600">
                     Full analysis →
                   </Link>
                 </div>

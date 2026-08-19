@@ -93,10 +93,7 @@ export function CompaniesPage() {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-          Companies
-        </h1>
+      <div className="mb-4 flex justify-end">
         <button onClick={openCreate} className={primaryButtonClass}>
           + New company
         </button>

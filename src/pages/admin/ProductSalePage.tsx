@@ -158,8 +158,6 @@ export function ProductSalePage() {
 
   return (
     <div>
-      <h1 className="mb-4 text-lg font-semibold text-neutral-900 dark:text-neutral-100">Product sale</h1>
-
       {error && <p className="mb-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
       {success && <p className="mb-4 text-sm text-emerald-600 dark:text-emerald-400">{success}</p>}
 

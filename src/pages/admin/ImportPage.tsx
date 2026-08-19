@@ -390,7 +390,7 @@ export function ImportPage() {
           <button onClick={reset} className={primaryButtonClass}>
             Import another file
           </button>
-          <Link to="/admin/missing-data" className={secondaryButtonClass}>
+          <Link to="/admin/subscriber-tools?tab=missing" className={secondaryButtonClass}>
             Review subscribers with missing data
           </Link>
         </div>
