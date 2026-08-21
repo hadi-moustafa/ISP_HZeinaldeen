@@ -229,6 +229,18 @@ export async function waiveInvoice(invoiceId: string) {
   if (error) throw error
 }
 
+// Re-bases an invoice's amount_due to a new figure -- used when the Pay
+// modal's "new permanent price" toggle is on: the entered amount IS this
+// period's real bill from now on, not a short payment against the old
+// price, so there's nothing left over to become debt or roll into next
+// month. sync_invoice_status() (fired by the payment insert that follows)
+// derives status from payments-vs-amount_due, so paying the new amount_due
+// in full lands on 'paid' automatically.
+export async function setInvoiceAmountDue(invoiceId: string, amountDue: number) {
+  const { error } = await supabase.from('invoices').update({ amount_due: amountDue }).eq('id', invoiceId)
+  if (error) throw error
+}
+
 export async function generateMonthlyInvoices() {
   const { data, error } = await supabase.functions.invoke('generate-monthly-invoices')
   if (error) throw error

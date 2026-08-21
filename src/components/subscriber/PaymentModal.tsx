@@ -7,6 +7,7 @@ import {
   payDebtFifo,
   applyNextPeriodCredit,
   waiveInvoice,
+  setInvoiceAmountDue,
 } from '../../lib/api/invoices'
 import {
   listOpenSaleMovementsForSubscriber,
@@ -273,7 +274,10 @@ export function PaymentModal({
 
   function buildFlags(): FlaggedLine[] {
     const flags: FlaggedLine[] = []
-    if (selectedLines.has('service')) {
+    // Setting a new permanent price re-bases this period's bill to the
+    // entered amount instead of comparing it against the old price, so
+    // there's no under/over-payment to reconcile -- see processServiceLine.
+    if (selectedLines.has('service') && !servicePriceToggle) {
       const entered = round2(Number(serviceAmount) || 0)
       if (entered < serviceExpected) flags.push({ line: 'service', kind: 'under', expected: serviceExpected, entered })
       else if (entered > serviceExpected) flags.push({ line: 'service', kind: 'over', expected: serviceExpected, entered })
@@ -402,6 +406,35 @@ export function PaymentModal({
     if (!realInvoiceId) throw new Error('Could not resolve this period\'s invoice')
 
     const entered = round2(Number(serviceAmount) || 0)
+
+    if (servicePriceToggle) {
+      // The entered amount becomes this period's whole bill, full stop --
+      // no comparison against the old price, no shortfall, no debt, no
+      // rollover to next month. Re-base amount_due first so paying
+      // `entered` in full lands the invoice on 'paid', not 'partial'.
+      await setInvoiceAmountDue(realInvoiceId, entered)
+      if (entered > 0) {
+        await createPayment({
+          invoice_id: realInvoiceId,
+          subscriber_id: sub.id,
+          collector_id: collectorId || null,
+          amount: entered,
+          payment_date: date,
+          method,
+          note: notes || null,
+          staff_id: staff?.id ?? null,
+        })
+      }
+      await updateSubscriberFields(sub.id, { price: entered })
+      logActivity(
+        staff?.id ?? null,
+        `${staff?.username ?? 'Someone'} logged a service payment of ${entered} for subscriber ${sub.name} and set it as their permanent price`,
+        'payment',
+        sub.id,
+      )
+      return
+    }
+
     const choice = flagChoices.service
     const capped = Math.min(entered, serviceExpected)
 
@@ -431,15 +464,9 @@ export function PaymentModal({
       await applyNextPeriodCredit(sub.id, sub.service_id, nextPeriod, excess)
     }
 
-    if (servicePriceToggle) {
-      await updateSubscriberFields(sub.id, { price: entered })
-    }
-
     logActivity(
       staff?.id ?? null,
-      `${staff?.username ?? 'Someone'} logged a service payment of ${entered} for subscriber ${sub.name}${
-        servicePriceToggle ? ' and set it as their permanent price' : ''
-      }`,
+      `${staff?.username ?? 'Someone'} logged a service payment of ${entered} for subscriber ${sub.name}`,
       'payment',
       sub.id,
     )
