@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { listProducts } from '../../lib/api/products'
+import { listProductStockSummary } from '../../lib/api/products'
 import { recordProductSale } from '../../lib/api/productPayments'
 import { listSubscribersLite } from '../../lib/api/subscribers'
 import { logActivity } from '../../lib/api/activityLog'
 import { useStaff } from '../../context/StaffContext'
-import type { Product } from '../../types/reference'
+import type { ProductStockSummary } from '../../types/reference'
 import { inputClass, primaryButtonClass, secondaryButtonClass, cardClass } from '../../lib/uiClasses'
 import { X } from 'lucide-react'
 
@@ -13,13 +13,13 @@ type CustomerMode = 'subscriber' | 'walkin'
 interface CartLine {
   key: string
   productId: string
-  quantity: string
-  unitPrice: string
+  quantity: string // for cable: meters used; for bundle: fixed '1'; else: unit count
+  totalAmount: string // the actual charge for this line -- see recordProductSale's totalAmount
   amountPaid: string
 }
 
 function emptyLine(): CartLine {
-  return { key: crypto.randomUUID(), productId: '', quantity: '1', unitPrice: '', amountPaid: '' }
+  return { key: crypto.randomUUID(), productId: '', quantity: '1', totalAmount: '', amountPaid: '' }
 }
 
 function todayLocal() {
@@ -30,9 +30,17 @@ function todayLocal() {
   return `${y}-${m}-${day}`
 }
 
+// The price a fresh line should default to for a product: its active
+// (oldest, in-stock) lot's sell price, falling back to the product's own
+// "next lot" default when nothing's in stock yet (display estimate only --
+// an actual sale with no stock is rejected server-side).
+function defaultUnitPrice(product: ProductStockSummary): number {
+  return product.active_lot?.sell_price ?? product.sell_price
+}
+
 export function ProductSalePage() {
   const { staff } = useStaff()
-  const [products, setProducts] = useState<Product[]>([])
+  const [products, setProducts] = useState<ProductStockSummary[]>([])
   const [subscribers, setSubscribers] = useState<{ id: string; name: string }[]>([])
 
   const [customerMode, setCustomerMode] = useState<CustomerMode>('subscriber')
@@ -49,10 +57,14 @@ export function ProductSalePage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
-  useEffect(() => {
-    listProducts()
+  function loadProducts() {
+    listProductStockSummary()
       .then((rows) => setProducts(rows.filter((p) => p.is_active)))
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load products'))
+  }
+
+  useEffect(() => {
+    loadProducts()
     listSubscribersLite()
       .then(setSubscribers)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load subscribers'))
@@ -70,12 +82,35 @@ export function ProductSalePage() {
 
   function selectProduct(key: string, productId: string) {
     const product = products.find((p) => p.id === productId)
-    const qty = Number(cart.find((l) => l.key === key)?.quantity || '1') || 1
-    updateLine(key, {
-      productId,
-      unitPrice: product ? String(product.sell_price) : '',
-      amountPaid: product ? String(product.sell_price * qty) : '',
-    })
+    if (!product) {
+      updateLine(key, { productId, quantity: '1', totalAmount: '', amountPaid: '' })
+      return
+    }
+    const price = defaultUnitPrice(product)
+    if (product.product_type === 'bundle') {
+      updateLine(key, { productId, quantity: '1', totalAmount: String(price), amountPaid: String(price) })
+    } else if (product.product_type === 'cable') {
+      updateLine(key, { productId, quantity: '', totalAmount: String(price), amountPaid: '' })
+    } else {
+      updateLine(key, { productId, quantity: '1', totalAmount: String(price), amountPaid: String(price) })
+    }
+  }
+
+  function updateQuantity(key: string, quantity: string) {
+    const line = cart.find((l) => l.key === key)
+    const product = line ? products.find((p) => p.id === line.productId) : undefined
+    if (product && product.product_type === 'standard') {
+      const price = defaultUnitPrice(product)
+      const qty = Number(quantity) || 0
+      const total = round2(price * qty)
+      updateLine(key, { quantity, totalAmount: String(total), amountPaid: String(total) })
+    } else {
+      updateLine(key, { quantity })
+    }
+  }
+
+  function round2(n: number) {
+    return Math.round(n * 100) / 100
   }
 
   function addLine() {
@@ -86,7 +121,7 @@ export function ProductSalePage() {
     setCart((lines) => (lines.length > 1 ? lines.filter((l) => l.key !== key) : lines))
   }
 
-  const cartTotal = cart.reduce((sum, l) => sum + (Number(l.quantity) || 0) * (Number(l.unitPrice) || 0), 0)
+  const cartTotal = cart.reduce((sum, l) => sum + (Number(l.totalAmount) || 0), 0)
   const cartPaid = cart.reduce((sum, l) => sum + (Number(l.amountPaid) || 0), 0)
 
   async function handleSubmit(e: FormEvent) {
@@ -102,7 +137,7 @@ export function ProductSalePage() {
       setError("Enter the walk-in customer's name.")
       return
     }
-    const lines = cart.filter((l) => l.productId && Number(l.quantity) > 0)
+    const lines = cart.filter((l) => l.productId && (Number(l.quantity) > 0 || products.find((p) => p.id === l.productId)?.product_type === 'bundle'))
     if (lines.length === 0) {
       setError('Add at least one product with a quantity.')
       return
@@ -119,8 +154,8 @@ export function ProductSalePage() {
           outsideCustomerName:
             customerMode === 'walkin' ? [walkinName.trim(), walkinPhone.trim()].filter(Boolean).join(' · ') : null,
           staffId: staff?.id ?? null,
-          quantity: Number(line.quantity),
-          unitPrice: Number(line.unitPrice) || 0,
+          quantity: product?.product_type === 'bundle' ? 1 : Number(line.quantity),
+          totalAmount: line.totalAmount ? Number(line.totalAmount) : null,
           amountPaid: Number(line.amountPaid) || 0,
           movementDate: date,
           note: note || null,
@@ -128,7 +163,7 @@ export function ProductSalePage() {
         succeeded += 1
         logActivity(
           staff?.id ?? null,
-          `${staff?.username ?? 'Someone'} sold ${line.quantity} ${product?.name ?? 'product'} to ${
+          `${staff?.username ?? 'Someone'} sold ${product?.product_type === 'cable' ? `${line.quantity}m of` : line.quantity} ${product?.name ?? 'product'} to ${
             customerMode === 'subscriber' ? selectedSubscriber?.name : walkinName.trim()
           }`,
           'product_movement',
@@ -142,9 +177,7 @@ export function ProductSalePage() {
       setSubscriberSearch('')
       setWalkinName('')
       setWalkinPhone('')
-      listProducts()
-        .then((rows) => setProducts(rows.filter((p) => p.is_active)))
-        .catch(() => {})
+      loadProducts()
     } catch (err) {
       setError(
         `${err instanceof Error ? err.message : 'Failed to log sale'} (${succeeded} of ${lines.length} product line${
@@ -263,7 +296,12 @@ export function ProductSalePage() {
                       <option value="">Select a product…</option>
                       {products.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.name} ({p.quantity_in_stock} {p.unit} in stock)
+                          {p.name}
+                          {p.product_type === 'bundle'
+                            ? ' (bundle)'
+                            : p.product_type === 'cable'
+                              ? ` (${p.total_stock} m in stock)`
+                              : ` (${p.total_stock} ${p.unit} in stock)`}
                         </option>
                       ))}
                     </select>
@@ -278,39 +316,97 @@ export function ProductSalePage() {
                       </button>
                     )}
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={line.quantity}
-                      onChange={(e) => updateLine(line.key, { quantity: e.target.value })}
-                      placeholder="Qty"
-                      className={inputClass}
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={line.unitPrice}
-                      onChange={(e) => updateLine(line.key, { unitPrice: e.target.value })}
-                      placeholder="Unit price"
-                      className={inputClass}
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={line.amountPaid}
-                      onChange={(e) => updateLine(line.key, { amountPaid: e.target.value })}
-                      placeholder="Amount paid"
-                      className={inputClass}
-                    />
-                  </div>
-                  {product && Number(line.quantity) > 0 && (
+
+                  {product?.product_type === 'bundle' ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={line.totalAmount}
+                        onChange={(e) => updateLine(line.key, { totalAmount: e.target.value })}
+                        placeholder="Bundle price"
+                        className={inputClass}
+                      />
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={line.amountPaid}
+                        onChange={(e) => updateLine(line.key, { amountPaid: e.target.value })}
+                        placeholder="Amount paid"
+                        className={inputClass}
+                      />
+                    </div>
+                  ) : product?.product_type === 'cable' ? (
+                    <div className="grid grid-cols-3 gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={line.quantity}
+                        onChange={(e) => updateQuantity(line.key, e.target.value)}
+                        placeholder="Meters used"
+                        className={inputClass}
+                      />
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={line.totalAmount}
+                        onChange={(e) => updateLine(line.key, { totalAmount: e.target.value })}
+                        placeholder="Charge"
+                        className={inputClass}
+                      />
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={line.amountPaid}
+                        onChange={(e) => updateLine(line.key, { amountPaid: e.target.value })}
+                        placeholder="Amount paid"
+                        className={inputClass}
+                      />
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={line.quantity}
+                        onChange={(e) => updateQuantity(line.key, e.target.value)}
+                        placeholder="Qty"
+                        className={inputClass}
+                      />
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={line.totalAmount}
+                        onChange={(e) => updateLine(line.key, { totalAmount: e.target.value })}
+                        placeholder="Line total"
+                        className={inputClass}
+                      />
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={line.amountPaid}
+                        onChange={(e) => updateLine(line.key, { amountPaid: e.target.value })}
+                        placeholder="Amount paid"
+                        className={inputClass}
+                      />
+                    </div>
+                  )}
+
+                  {product?.product_type === 'cable' && (
                     <p className="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400">
-                      Line total: {((Number(line.quantity) || 0) * (Number(line.unitPrice) || 0)).toFixed(2)}
+                      Billed as one {product.cable_unit_length ?? '?'}m unit at a flat price, regardless of exact meters used.
                     </p>
+                  )}
+                  {product && product.product_type !== 'bundle' && product.total_stock <= 0 && (
+                    <p className="mt-1.5 text-xs text-red-600 dark:text-red-400">No stock available for this product.</p>
                   )}
                 </div>
               )

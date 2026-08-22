@@ -17,6 +17,7 @@ import {
   type OpenProductMovement,
 } from '../../lib/api/productPayments'
 import { listProducts } from '../../lib/api/products'
+import { movementLineTotal } from '../../types/movements'
 import { updateSubscriberFields } from '../../lib/api/subscribers'
 import { listMonthlyLog } from '../../lib/api/reports'
 import { logActivity } from '../../lib/api/activityLog'
@@ -137,7 +138,7 @@ export function PaymentModal({
   const [error, setError] = useState<string | null>(null)
 
   const existingProductsTotal = useMemo(
-    () => round2(openProducts.reduce((sum, m) => sum + ((m.unit_price ?? 0) * Math.abs(m.quantity) - m.amount_paid), 0)),
+    () => round2(openProducts.reduce((sum, m) => sum + (movementLineTotal(m) - m.amount_paid), 0)),
     [openProducts],
   )
   const newProductsTotal = useMemo(
@@ -727,7 +728,7 @@ export function PaymentModal({
               {openProducts.map((m) => (
                 <div key={m.id} className="flex items-center justify-between text-xs text-neutral-500">
                   <span className="truncate">{m.products?.name ?? 'Product'} (outstanding)</span>
-                  <span>{((m.unit_price ?? 0) * Math.abs(m.quantity) - m.amount_paid).toFixed(2)}</span>
+                  <span>{(movementLineTotal(m) - m.amount_paid).toFixed(2)}</span>
                 </div>
               ))}
               {newProductLines.map((l) => (
