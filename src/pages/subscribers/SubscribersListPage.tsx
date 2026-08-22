@@ -262,7 +262,6 @@ export function SubscribersListPage() {
     'isp:subscribers-filters:sort',
     'none',
   )
-  const [groupByLocation, setGroupByLocation] = useLocalStorageState('isp:subscribers-filters:group-by-location', false)
   const [billingFilter, setBillingFilter] = useLocalStorageState<'any' | 'paid' | 'unpaid'>(
     'isp:subscribers-filters:billing',
     'any',
@@ -357,9 +356,9 @@ export function SubscribersListPage() {
   }
 
   // Counts everything the "Clear filters" button resets -- not just the
-  // `filters` object, but also billingFilter/sortMode/groupByLocation/
-  // filterField, so the button (and its visibility) matches "all the
-  // filters, not just these" rather than only the original subset.
+  // `filters` object, but also billingFilter/sortMode/filterField, so the
+  // button (and its visibility) matches "all the filters, not just these"
+  // rather than only the original subset.
   const activeFilterCount =
     Object.entries(filters).filter(([key, value]) => {
       if (key === 'debtMode') return value !== 'any'
@@ -367,7 +366,6 @@ export function SubscribersListPage() {
     }).length +
     (billingFilter !== 'any' ? 1 : 0) +
     (sortMode !== 'none' ? 1 : 0) +
-    (groupByLocation ? 1 : 0) +
     (filterField !== 'name' ? 1 : 0)
 
   function clearAllFilters() {
@@ -375,7 +373,6 @@ export function SubscribersListPage() {
     setFilterField('name')
     setBillingFilter('any')
     setSortMode('none')
-    setGroupByLocation(false)
   }
 
   function toggleSelect(id: string) {
@@ -498,18 +495,6 @@ export function SubscribersListPage() {
       return dir * a.expiry_date.localeCompare(b.expiry_date)
     })
   }, [subscribers, monthlyLogBySubscriber, sortMode, billingFilter])
-
-  const groupedByLocation = useMemo(() => {
-    if (!groupByLocation) return null
-    const groups = new Map<string, SubscriberWithRelations[]>()
-    for (const sub of displaySubscribers) {
-      const key = sub.addresses?.name ?? 'No address'
-      const list = groups.get(key) ?? []
-      list.push(sub)
-      groups.set(key, list)
-    }
-    return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b))
-  }, [displaySubscribers, groupByLocation])
 
   return (
     <div>
@@ -736,26 +721,21 @@ export function SubscribersListPage() {
         >
           All
         </button>
-        <button
-          onClick={() => setBillingFilter(billingFilter === 'paid' ? 'any' : 'paid')}
+        <select
+          value={billingFilter}
+          onChange={(e) => setBillingFilter(e.target.value as typeof billingFilter)}
           className={`shrink-0 rounded-full px-3 py-2 text-sm font-medium shadow-sm ${
             billingFilter === 'paid'
               ? 'bg-green-500 text-white'
-              : 'bg-white text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200'
+              : billingFilter === 'unpaid'
+                ? 'bg-amber-500 text-white'
+                : 'bg-white text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200'
           }`}
         >
-          Paid
-        </button>
-        <button
-          onClick={() => setBillingFilter(billingFilter === 'unpaid' ? 'any' : 'unpaid')}
-          className={`shrink-0 rounded-full px-3 py-2 text-sm font-medium shadow-sm ${
-            billingFilter === 'unpaid'
-              ? 'bg-amber-500 text-white'
-              : 'bg-white text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200'
-          }`}
-        >
-          Unpaid
-        </button>
+          <option value="any">Payment: any</option>
+          <option value="paid">Paid</option>
+          <option value="unpaid">Unpaid</option>
+        </select>
         <button
           onClick={() => updateFilter('debtMode', filters.debtMode === 'in_debt' ? 'any' : 'in_debt')}
           className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium shadow-sm ${
@@ -776,16 +756,6 @@ export function SubscribersListPage() {
           <option value="expiry_asc">Expiry ↑</option>
           <option value="expiry_desc">Expiry ↓</option>
         </select>
-        <button
-          onClick={() => setGroupByLocation((v) => !v)}
-          className={`shrink-0 rounded-full px-3 py-2 text-sm font-medium shadow-sm ${
-            groupByLocation
-              ? 'bg-indigo-500 text-white'
-              : 'bg-white text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200'
-          }`}
-        >
-          Group by location
-        </button>
         {activeFilterCount > 0 && (
           <button onClick={clearAllFilters} className="shrink-0 text-xs font-medium text-neutral-500">
             Clear filters
@@ -833,54 +803,24 @@ export function SubscribersListPage() {
       {error && <p className="mb-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
       {loading && <p className="text-neutral-500 dark:text-neutral-400">Loading…</p>}
 
-      {groupedByLocation ? (
-        <div className="space-y-5">
-          {groupedByLocation.map(([location, subs]) => (
-            <div key={location}>
-              <h2 className="mb-2 text-sm font-semibold text-neutral-500 dark:text-neutral-400">
-                {location} ({subs.length})
-              </h2>
-              <div className="space-y-3">
-                {subs.map((sub) => (
-                  <SubscriberCard
-                    key={sub.id}
-                    sub={sub}
-                    log={monthlyLogBySubscriber[sub.id]}
-                    selected={selectedIds.has(sub.id)}
-                    onToggleSelect={toggleSelect}
-                    menuOpen={openCardMenuId === sub.id}
-                    onToggleMenu={(id) => setOpenCardMenuId(openCardMenuId === id ? null : id)}
-                    onDelete={handleDelete}
-                    onPay={openPaymentModal}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
-          {!loading && subscribers.length === 0 && (
-            <p className="text-neutral-500 dark:text-neutral-400">No subscribers match these filters.</p>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {displaySubscribers.map((sub) => (
-            <SubscriberCard
-              key={sub.id}
-              sub={sub}
-              log={monthlyLogBySubscriber[sub.id]}
-              selected={selectedIds.has(sub.id)}
-              onToggleSelect={toggleSelect}
-              menuOpen={openCardMenuId === sub.id}
-              onToggleMenu={(id) => setOpenCardMenuId(openCardMenuId === id ? null : id)}
-              onDelete={handleDelete}
-              onPay={openPaymentModal}
-            />
-          ))}
-          {!loading && subscribers.length === 0 && (
-            <p className="text-neutral-500 dark:text-neutral-400">No subscribers match these filters.</p>
-          )}
-        </div>
-      )}
+      <div className="space-y-3">
+        {displaySubscribers.map((sub) => (
+          <SubscriberCard
+            key={sub.id}
+            sub={sub}
+            log={monthlyLogBySubscriber[sub.id]}
+            selected={selectedIds.has(sub.id)}
+            onToggleSelect={toggleSelect}
+            menuOpen={openCardMenuId === sub.id}
+            onToggleMenu={(id) => setOpenCardMenuId(openCardMenuId === id ? null : id)}
+            onDelete={handleDelete}
+            onPay={openPaymentModal}
+          />
+        ))}
+        {!loading && subscribers.length === 0 && (
+          <p className="text-neutral-500 dark:text-neutral-400">No subscribers match these filters.</p>
+        )}
+      </div>
 
       <PaymentModal
         subscriber={paymentSub}
