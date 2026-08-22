@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import {
   listProductStockSummary,
   createProduct,
@@ -20,13 +20,37 @@ import { movementLineTotal } from '../../types/movements'
 import { useStaff } from '../../context/StaffContext'
 import { Modal } from '../../components/Modal'
 import { exportToExcel } from '../../lib/exportExcel'
-import {
-  inputClass,
-  primaryButtonClass,
-  secondaryButtonClass,
-  cardClass,
-} from '../../lib/uiClasses'
-import { Plus, X } from 'lucide-react'
+import { primaryButtonClass, secondaryButtonClass } from '../../lib/uiClasses'
+import { Plus, X, Pencil, Trash2, Package2 } from 'lucide-react'
+
+// Labeled field wrapper for the New/Edit product and Log movement forms --
+// this app otherwise sticks to placeholder-only inputs, but these two
+// forms have enough same-shaped number fields side by side (cost/sell,
+// quantity/price) that a label is worth it for clarity, per explicit
+// request for this page specifically.
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">{label}</span>
+      {children}
+    </label>
+  )
+}
+
+// Groups related fields under a small uppercase section heading -- used to
+// break the New/Edit product and Log movement forms into visually distinct
+// chunks (Pricing, Batch details, etc.) instead of one long flat list.
+function FormSection({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="mb-4 rounded-xl border border-neutral-200 bg-neutral-50/60 p-3 dark:border-neutral-700 dark:bg-neutral-900/40">
+      <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">{label}</p>
+      {children}
+    </div>
+  )
+}
+
+const modernInputClass =
+  'w-full rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-900 shadow-sm outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100'
 
 const emptyForm = {
   sku: '',
@@ -352,81 +376,99 @@ export function ProductsPage() {
       {error && <p className="mb-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
       {loading && <p className="text-neutral-500 dark:text-neutral-400">Loading…</p>}
 
-      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 lg:grid-cols-4">
         {products.map((product) => (
-          <div key={product.id} className={`${cardClass} p-3`}>
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="flex flex-wrap items-center gap-1.5 truncate text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                  <span className="truncate">{product.name}</span>
-                  {product.product_type !== 'standard' && (
-                    <span className="shrink-0 rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300">
-                      {productTypeLabels[product.product_type]}
-                    </span>
-                  )}
-                  {!product.is_active && (
-                    <span className="shrink-0 rounded bg-neutral-200 px-1.5 py-0.5 text-[10px] text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300">
-                      inactive
-                    </span>
-                  )}
-                </p>
-                <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
-                  {[product.sku, product.category].filter(Boolean).join(' · ') || '—'}
-                </p>
+          <div
+            key={product.id}
+            className="rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm transition-shadow hover:shadow-md dark:border-neutral-700 dark:bg-neutral-800"
+          >
+            <div className="mb-1.5 flex items-start justify-between gap-1">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-500 dark:bg-neutral-700 dark:text-neutral-400">
+                <Package2 size={14} />
               </div>
-              <div className="flex shrink-0 gap-1.5">
-                <button onClick={() => openEdit(product)} className="rounded-md border border-neutral-300 px-2.5 py-1.5 text-xs text-neutral-700 dark:border-neutral-600 dark:text-neutral-100">
-                  Edit
+              <div className="flex shrink-0 gap-1">
+                <button
+                  onClick={() => openEdit(product)}
+                  aria-label="Edit product"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-700"
+                >
+                  <Pencil size={13} />
                 </button>
-                <button onClick={() => remove(product)} className="rounded-md border border-red-300 px-2.5 py-1.5 text-xs text-red-600 dark:border-red-800 dark:text-red-400">
-                  Delete
+                <button
+                  onClick={() => remove(product)}
+                  aria-label="Delete product"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30"
+                >
+                  <Trash2 size={13} />
                 </button>
               </div>
             </div>
 
+            <p className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-100">{product.name}</p>
+            <p className="mb-1.5 truncate text-xs text-neutral-500 dark:text-neutral-400">
+              {[product.sku, product.category].filter(Boolean).join(' · ') || '—'}
+            </p>
+
+            <div className="mb-2 flex flex-wrap gap-1">
+              {product.product_type !== 'standard' && (
+                <span className="rounded-full bg-indigo-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300">
+                  {productTypeLabels[product.product_type]}
+                </span>
+              )}
+              {!product.is_active && (
+                <span className="rounded-full bg-neutral-200 px-1.5 py-0.5 text-[10px] text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300">
+                  inactive
+                </span>
+              )}
+              {product.product_type !== 'bundle' && product.open_lot_count > 1 && (
+                <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                  {product.open_lot_count} batches
+                </span>
+              )}
+              {product.product_type !== 'bundle' && product.total_stock <= product.reorder_level && (
+                <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700 dark:bg-amber-900 dark:text-amber-300">
+                  reorder
+                </span>
+              )}
+            </div>
+
             {product.product_type === 'bundle' ? (
-              <p className="mt-1.5 text-sm text-neutral-600 dark:text-neutral-300">Price {product.sell_price}</p>
+              <p className="text-sm font-medium text-neutral-700 dark:text-neutral-200">{product.sell_price.toFixed(2)}</p>
             ) : (
-              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-600 dark:text-neutral-300">
-                <span>
-                  Cost {product.active_lot?.cost_price ?? product.cost_price} · Sell {product.active_lot?.sell_price ?? product.sell_price}
-                </span>
-                <span>
+              <div className="space-y-0.5 text-xs text-neutral-600 dark:text-neutral-300">
+                <p>
+                  Cost {product.active_lot?.cost_price ?? product.cost_price} · Sell{' '}
+                  {product.active_lot?.sell_price ?? product.sell_price}
+                </p>
+                <p>
                   Stock: {product.total_stock} {product.unit}
-                </span>
-                {product.open_lot_count > 1 && (
-                  <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900 dark:text-blue-300">
-                    {product.open_lot_count} batches
-                  </span>
-                )}
-                {product.total_stock <= product.reorder_level && (
-                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700 dark:bg-amber-900 dark:text-amber-300">
-                    reorder
-                  </span>
-                )}
+                </p>
               </div>
             )}
 
-            <div className="mt-2.5 flex flex-wrap gap-1.5">
+            <div className="mt-2.5 flex flex-wrap gap-1.5 border-t border-neutral-100 pt-2.5 dark:border-neutral-700">
               {product.product_type !== 'bundle' && (
-                <button onClick={() => openMovementModal(product)} className="rounded-md border border-neutral-300 px-2.5 py-1.5 text-xs font-medium text-neutral-700 dark:border-neutral-600 dark:text-neutral-100">
+                <button
+                  onClick={() => openMovementModal(product)}
+                  className="rounded-full border border-neutral-200 px-2.5 py-1 text-[11px] font-medium text-neutral-700 dark:border-neutral-600 dark:text-neutral-100"
+                >
                   Log movement
                 </button>
               )}
               <button
                 onClick={() => toggleExpand(product.id)}
-                className="px-2 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400"
+                className="rounded-full px-2 py-1 text-[11px] font-medium text-blue-600 dark:text-blue-400"
               >
-                {expandedId === product.id ? 'Hide history' : 'Show history'}
+                {expandedId === product.id ? 'Hide history' : 'History'}
               </button>
             </div>
 
             {expandedId === product.id && (
-              <div className="mt-2.5 space-y-1.5 border-t border-neutral-200 pt-2.5 dark:border-neutral-700">
+              <div className="mt-2.5 space-y-1.5 border-t border-neutral-100 pt-2.5 dark:border-neutral-700">
                 {(movements[product.id] ?? []).map((m) => (
                   <div
                     key={m.id}
-                    className={`rounded-md p-2 text-xs ${
+                    className={`rounded-lg p-2 text-[11px] ${
                       m.movement_type === 'sale' ? paymentStatusClass[m.payment_status] : 'bg-neutral-50 dark:bg-neutral-700/50'
                     }`}
                   >
@@ -439,7 +481,7 @@ export function ProductsPage() {
                         <select
                           value={m.payment_status}
                           onChange={(e) => changePaymentStatus(product.id, m, e.target.value as MovementPaymentStatus)}
-                          className="shrink-0 rounded border-0 bg-white/60 text-[11px] font-medium dark:bg-black/20"
+                          className="shrink-0 rounded border-0 bg-white/60 text-[10px] font-medium dark:bg-black/20"
                         >
                           {(Object.keys(paymentStatusLabel) as MovementPaymentStatus[]).map((s) => (
                             <option key={s} value={s}>
@@ -457,14 +499,14 @@ export function ProductsPage() {
                   </div>
                 ))}
                 {(movements[product.id] ?? []).length === 0 && (
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">No stock movements yet.</p>
+                  <p className="text-[11px] text-neutral-500 dark:text-neutral-400">No stock movements yet.</p>
                 )}
               </div>
             )}
           </div>
         ))}
         {!loading && products.length === 0 && (
-          <p className="text-neutral-500 dark:text-neutral-400">No products yet.</p>
+          <p className="col-span-full text-neutral-500 dark:text-neutral-400">No products yet.</p>
         )}
       </div>
 
@@ -491,148 +533,171 @@ export function ProductsPage() {
             ))}
           </div>
 
-          <input
-            value={form.name}
-            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-            placeholder="Name"
-            className={`${inputClass} mb-4`}
-            required
-          />
-
-          <div className="mb-4 grid grid-cols-2 gap-3">
-            <input
-              value={form.sku}
-              onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
-              placeholder="SKU"
-              className={inputClass}
-            />
-            <input
-              value={form.category}
-              onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-              placeholder="Category"
-              className={inputClass}
-            />
-          </div>
+          <FormSection label="Basics">
+            <div className="mb-3">
+              <Field label="Name">
+                <input
+                  value={form.name}
+                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  className={modernInputClass}
+                  required
+                />
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="SKU">
+                <input
+                  value={form.sku}
+                  onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
+                  className={modernInputClass}
+                />
+              </Field>
+              <Field label="Category">
+                <input
+                  value={form.category}
+                  onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+                  className={modernInputClass}
+                />
+              </Field>
+            </div>
+          </FormSection>
 
           {form.product_type === 'bundle' ? (
             <>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={form.sell_price}
-                onChange={(e) => setForm((f) => ({ ...f, sell_price: e.target.value }))}
-                placeholder="Bundle price (what the customer pays)"
-                className={`${inputClass} mb-4`}
-                required
-              />
-              <p className="mb-2 text-sm font-medium text-neutral-700 dark:text-neutral-300">Components</p>
-              <div className="relative mb-3">
-                <div className="mb-2 space-y-1.5">
-                  {bundleDraft.map((l) => (
-                    <div key={l.key} className="flex items-center gap-2">
-                      <span className="flex-1 truncate text-sm text-neutral-700 dark:text-neutral-200">{l.productName}</span>
-                      <input
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        value={l.quantity}
-                        onChange={(e) =>
-                          setBundleDraft((prev) => prev.map((p) => (p.key === l.key ? { ...p, quantity: e.target.value } : p)))
-                        }
-                        className="w-20 rounded-md border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-600 dark:bg-neutral-700"
-                      />
-                      <button type="button" onClick={() => removeBundleComponent(l.key)} className="text-neutral-400">
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ))}
-                  {bundleDraft.length === 0 && (
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400">No components added yet.</p>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setBundlePickerOpen((v) => !v)}
-                  className="flex items-center gap-1 text-sm font-medium text-blue-600 dark:text-blue-400"
-                >
-                  <Plus size={14} /> Add a product
-                </button>
-                {bundlePickerOpen && (
-                  <div className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-800">
-                    {standardAndCableProducts.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => addBundleComponent(p)}
-                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-neutral-50 dark:hover:bg-neutral-700"
-                      >
-                        <span className="text-neutral-800 dark:text-neutral-100">{p.name}</span>
-                        <span className="text-neutral-500 dark:text-neutral-400">{p.total_stock} {p.unit}</span>
-                      </button>
+              <FormSection label="Pricing">
+                <Field label="Bundle price (what the customer pays)">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={form.sell_price}
+                    onChange={(e) => setForm((f) => ({ ...f, sell_price: e.target.value }))}
+                    className={modernInputClass}
+                    required
+                  />
+                </Field>
+              </FormSection>
+
+              <FormSection label="Components">
+                <div className="relative">
+                  <div className="mb-2 space-y-1.5">
+                    {bundleDraft.map((l) => (
+                      <div key={l.key} className="flex items-center gap-2">
+                        <span className="flex-1 truncate text-sm text-neutral-700 dark:text-neutral-200">{l.productName}</span>
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={l.quantity}
+                          onChange={(e) =>
+                            setBundleDraft((prev) => prev.map((p) => (p.key === l.key ? { ...p, quantity: e.target.value } : p)))
+                          }
+                          className="w-20 rounded-lg border border-neutral-200 bg-white px-2 py-1.5 text-sm shadow-sm dark:border-neutral-600 dark:bg-neutral-800"
+                        />
+                        <button type="button" onClick={() => removeBundleComponent(l.key)} className="text-neutral-400">
+                          <X size={14} />
+                        </button>
+                      </div>
                     ))}
-                    {standardAndCableProducts.length === 0 && (
-                      <p className="p-3 text-sm text-neutral-500 dark:text-neutral-400">No products to add.</p>
+                    {bundleDraft.length === 0 && (
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400">No components added yet.</p>
                     )}
                   </div>
-                )}
-              </div>
+                  <button
+                    type="button"
+                    onClick={() => setBundlePickerOpen((v) => !v)}
+                    className="flex items-center gap-1 text-sm font-medium text-blue-600 dark:text-blue-400"
+                  >
+                    <Plus size={14} /> Add a product
+                  </button>
+                  {bundlePickerOpen && (
+                    <div className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-800">
+                      {standardAndCableProducts.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => addBundleComponent(p)}
+                          className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-neutral-50 dark:hover:bg-neutral-700"
+                        >
+                          <span className="text-neutral-800 dark:text-neutral-100">{p.name}</span>
+                          <span className="text-neutral-500 dark:text-neutral-400">{p.total_stock} {p.unit}</span>
+                        </button>
+                      ))}
+                      {standardAndCableProducts.length === 0 && (
+                        <p className="p-3 text-sm text-neutral-500 dark:text-neutral-400">No products to add.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </FormSection>
             </>
           ) : (
             <>
-              <div className="mb-4 grid grid-cols-2 gap-3">
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={form.cost_price}
-                  onChange={(e) => setForm((f) => ({ ...f, cost_price: e.target.value }))}
-                  placeholder="Cost price"
-                  className={inputClass}
-                  required
-                />
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={form.sell_price}
-                  onChange={(e) => setForm((f) => ({ ...f, sell_price: e.target.value }))}
-                  placeholder="Sell price"
-                  className={inputClass}
-                  required
-                />
-              </div>
+              <FormSection label="Pricing">
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Cost price">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={form.cost_price}
+                      onChange={(e) => setForm((f) => ({ ...f, cost_price: e.target.value }))}
+                      className={modernInputClass}
+                      required
+                    />
+                  </Field>
+                  <Field label="Sell price">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={form.sell_price}
+                      onChange={(e) => setForm((f) => ({ ...f, sell_price: e.target.value }))}
+                      className={modernInputClass}
+                      required
+                    />
+                  </Field>
+                </div>
+              </FormSection>
 
               {form.product_type === 'cable' ? (
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={form.cable_unit_length}
-                  onChange={(e) => setForm((f) => ({ ...f, cable_unit_length: e.target.value }))}
-                  placeholder="Billable unit length in meters (e.g. 70)"
-                  className={`${inputClass} mb-4`}
-                  required
-                />
+                <FormSection label="Cable settings">
+                  <Field label="Billable unit length (meters)">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={form.cable_unit_length}
+                      onChange={(e) => setForm((f) => ({ ...f, cable_unit_length: e.target.value }))}
+                      placeholder="e.g. 70"
+                      className={modernInputClass}
+                      required
+                    />
+                  </Field>
+                </FormSection>
               ) : (
-                <div className="mb-4 grid grid-cols-2 gap-3">
-                  <input
-                    value={form.unit}
-                    onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))}
-                    placeholder="Unit"
-                    className={inputClass}
-                    required
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    value={form.reorder_level}
-                    onChange={(e) => setForm((f) => ({ ...f, reorder_level: e.target.value }))}
-                    placeholder="Reorder level"
-                    className={inputClass}
-                    required
-                  />
-                </div>
+                <FormSection label="Stock settings">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Unit">
+                      <input
+                        value={form.unit}
+                        onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))}
+                        className={modernInputClass}
+                        required
+                      />
+                    </Field>
+                    <Field label="Reorder level">
+                      <input
+                        type="number"
+                        min="0"
+                        value={form.reorder_level}
+                        onChange={(e) => setForm((f) => ({ ...f, reorder_level: e.target.value }))}
+                        className={modernInputClass}
+                        required
+                      />
+                    </Field>
+                  </div>
+                </FormSection>
               )}
 
               {!editing && (
@@ -643,13 +708,14 @@ export function ProductsPage() {
             </>
           )}
 
-          <label className="mb-4 flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300">
+          <label className="mb-4 flex items-center justify-between rounded-xl border border-neutral-200 px-3 py-2.5 dark:border-neutral-700">
+            <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">Active</span>
             <input
               type="checkbox"
               checked={form.is_active}
               onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))}
+              className="h-4 w-4 accent-blue-600"
             />
-            Active
           </label>
 
           <div className="flex justify-end gap-2">
@@ -673,89 +739,109 @@ export function ProductsPage() {
         title={`Log movement · ${movementModalProduct?.name ?? ''}`}
       >
         <form onSubmit={submitMovement}>
-          <select
-            value={movementForm.movement_type}
-            onChange={(e) =>
-              setMovementForm((f) => ({
-                ...f,
-                movement_type: e.target.value as Exclude<MovementType, 'sale'>,
-              }))
-            }
-            className={`${inputClass} mb-4`}
-          >
-            {(Object.keys(movementTypeLabels) as Exclude<MovementType, 'sale'>[]).map((type) => (
-              <option key={type} value={type}>
-                {movementTypeLabels[type]}
-              </option>
-            ))}
-          </select>
-
-          <input
-            type="number"
-            step="0.01"
-            value={movementForm.quantity}
-            onChange={(e) => setMovementForm((f) => ({ ...f, quantity: e.target.value }))}
-            placeholder={
-              movementForm.movement_type === 'adjustment'
-                ? 'Quantity change (+/-)'
-                : movementModalProduct?.product_type === 'cable'
-                  ? 'Meters'
-                  : 'Quantity'
-            }
-            className={`${inputClass} mb-4`}
-            required
-          />
+          <FormSection label="Movement">
+            <div className="mb-3">
+              <Field label="Type">
+                <select
+                  value={movementForm.movement_type}
+                  onChange={(e) =>
+                    setMovementForm((f) => ({
+                      ...f,
+                      movement_type: e.target.value as Exclude<MovementType, 'sale'>,
+                    }))
+                  }
+                  className={modernInputClass}
+                >
+                  {(Object.keys(movementTypeLabels) as Exclude<MovementType, 'sale'>[]).map((type) => (
+                    <option key={type} value={type}>
+                      {movementTypeLabels[type]}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <Field
+              label={
+                movementForm.movement_type === 'adjustment'
+                  ? 'Quantity change (+/-)'
+                  : movementModalProduct?.product_type === 'cable'
+                    ? 'Meters'
+                    : 'Quantity'
+              }
+            >
+              <input
+                type="number"
+                step="0.01"
+                value={movementForm.quantity}
+                onChange={(e) => setMovementForm((f) => ({ ...f, quantity: e.target.value }))}
+                className={modernInputClass}
+                required
+              />
+            </Field>
+          </FormSection>
 
           {movementForm.movement_type === 'restock' ? (
-            <div className="mb-4 grid grid-cols-2 gap-3">
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={movementForm.cost_price}
-                onChange={(e) => setMovementForm((f) => ({ ...f, cost_price: e.target.value }))}
-                placeholder="Cost price (this batch)"
-                className={inputClass}
-                required
-              />
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={movementForm.sell_price}
-                onChange={(e) => setMovementForm((f) => ({ ...f, sell_price: e.target.value }))}
-                placeholder="Sell price (this batch)"
-                className={inputClass}
-                required
-              />
-            </div>
+            <FormSection label="Batch details">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Cost price">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={movementForm.cost_price}
+                    onChange={(e) => setMovementForm((f) => ({ ...f, cost_price: e.target.value }))}
+                    className={modernInputClass}
+                    required
+                  />
+                </Field>
+                <Field label="Sell price">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={movementForm.sell_price}
+                    onChange={(e) => setMovementForm((f) => ({ ...f, sell_price: e.target.value }))}
+                    className={modernInputClass}
+                    required
+                  />
+                </Field>
+              </div>
+            </FormSection>
           ) : (
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={movementForm.cost_price}
-              onChange={(e) => setMovementForm((f) => ({ ...f, cost_price: e.target.value }))}
-              placeholder="Unit price (optional)"
-              className={`${inputClass} mb-4`}
-            />
+            <FormSection label="Pricing">
+              <Field label="Unit price (optional)">
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={movementForm.cost_price}
+                  onChange={(e) => setMovementForm((f) => ({ ...f, cost_price: e.target.value }))}
+                  className={modernInputClass}
+                />
+              </Field>
+            </FormSection>
           )}
 
-          <input
-            type="date"
-            aria-label="Movement date"
-            value={movementForm.movement_date}
-            onChange={(e) => setMovementForm((f) => ({ ...f, movement_date: e.target.value }))}
-            className={`${inputClass} mb-4`}
-            required
-          />
-
-          <input
-            value={movementForm.note}
-            onChange={(e) => setMovementForm((f) => ({ ...f, note: e.target.value }))}
-            placeholder="Note"
-            className={`${inputClass} mb-4`}
-          />
+          <FormSection label="Details">
+            <div className="mb-3">
+              <Field label="Date">
+                <input
+                  type="date"
+                  value={movementForm.movement_date}
+                  onChange={(e) => setMovementForm((f) => ({ ...f, movement_date: e.target.value }))}
+                  className={modernInputClass}
+                  required
+                />
+              </Field>
+            </div>
+            <Field label="Note (optional)">
+              <input
+                value={movementForm.note}
+                onChange={(e) => setMovementForm((f) => ({ ...f, note: e.target.value }))}
+                className={modernInputClass}
+              />
+            </Field>
+          </FormSection>
 
           <div className="flex justify-end gap-2">
             <button
