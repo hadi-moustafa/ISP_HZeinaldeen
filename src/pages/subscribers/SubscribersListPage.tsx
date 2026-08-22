@@ -26,6 +26,7 @@ import { useStaff } from '../../context/StaffContext'
 import { HeaderActions } from '../../components/AppHeader'
 import { PaymentModal } from '../../components/subscriber/PaymentModal'
 import { exportToExcel } from '../../lib/exportExcel'
+import { useLocalStorageState } from '../../lib/useLocalStorageState'
 
 type BillingKey = 'paid' | 'debt' | 'postponed' | 'partial' | 'none'
 
@@ -235,8 +236,8 @@ function SubscriberCard({
 
 export function SubscribersListPage() {
   const { staff } = useStaff()
-  const [filters, setFilters] = useState(emptyFilters)
-  const [filterField, setFilterField] = useState<FilterField>('name')
+  const [filters, setFilters] = useLocalStorageState('isp:subscribers-filters:filters', emptyFilters)
+  const [filterField, setFilterField] = useLocalStorageState<FilterField>('isp:subscribers-filters:field', 'name')
   const [searchFieldMenuOpen, setSearchFieldMenuOpen] = useState(false)
   const [openCardMenuId, setOpenCardMenuId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -257,8 +258,15 @@ export function SubscribersListPage() {
   const [debtIds, setDebtIds] = useState<Set<string>>(new Set())
   const [monthlyLogBySubscriber, setMonthlyLogBySubscriber] = useState<Record<string, MonthlyLogRow>>({})
 
-  const [sortMode, setSortMode] = useState<'none' | 'expiry_asc' | 'expiry_desc'>('none')
-  const [groupByLocation, setGroupByLocation] = useState(false)
+  const [sortMode, setSortMode] = useLocalStorageState<'none' | 'expiry_asc' | 'expiry_desc'>(
+    'isp:subscribers-filters:sort',
+    'none',
+  )
+  const [groupByLocation, setGroupByLocation] = useLocalStorageState('isp:subscribers-filters:group-by-location', false)
+  const [billingFilter, setBillingFilter] = useLocalStorageState<'any' | 'paid' | 'unpaid'>(
+    'isp:subscribers-filters:billing',
+    'any',
+  )
 
   async function refreshBillingData() {
     const [debt, log] = await Promise.all([listDebtSubscriberIds(), listMonthlyLog(currentPeriodMonth())])
@@ -348,10 +356,27 @@ export function SubscribersListPage() {
     setFilters((f) => ({ ...emptyFilters, debtMode: f.debtMode }))
   }
 
-  const activeFilterCount = Object.entries(filters).filter(([key, value]) => {
-    if (key === 'debtMode') return value !== 'any'
-    return value !== ''
-  }).length
+  // Counts everything the "Clear filters" button resets -- not just the
+  // `filters` object, but also billingFilter/sortMode/groupByLocation/
+  // filterField, so the button (and its visibility) matches "all the
+  // filters, not just these" rather than only the original subset.
+  const activeFilterCount =
+    Object.entries(filters).filter(([key, value]) => {
+      if (key === 'debtMode') return value !== 'any'
+      return value !== ''
+    }).length +
+    (billingFilter !== 'any' ? 1 : 0) +
+    (sortMode !== 'none' ? 1 : 0) +
+    (groupByLocation ? 1 : 0) +
+    (filterField !== 'name' ? 1 : 0)
+
+  function clearAllFilters() {
+    setFilters(emptyFilters)
+    setFilterField('name')
+    setBillingFilter('any')
+    setSortMode('none')
+    setGroupByLocation(false)
+  }
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -454,9 +479,16 @@ export function SubscribersListPage() {
   // signal used for the card border color, so "paid" here means the same
   // thing it does visually on each card.
   const displaySubscribers = useMemo(() => {
-    if (sortMode === 'none') return subscribers
+    const billingFiltered =
+      billingFilter === 'any'
+        ? subscribers
+        : subscribers.filter((s) => {
+            const paid = billingKeyFor(monthlyLogBySubscriber[s.id]?.status, s.debt) === 'paid'
+            return billingFilter === 'paid' ? paid : !paid
+          })
+    if (sortMode === 'none') return billingFiltered
     const dir = sortMode === 'expiry_asc' ? 1 : -1
-    return [...subscribers].sort((a, b) => {
+    return [...billingFiltered].sort((a, b) => {
       const aPaid = billingKeyFor(monthlyLogBySubscriber[a.id]?.status, a.debt) === 'paid'
       const bPaid = billingKeyFor(monthlyLogBySubscriber[b.id]?.status, b.debt) === 'paid'
       if (aPaid !== bPaid) return aPaid ? 1 : -1
@@ -465,7 +497,7 @@ export function SubscribersListPage() {
       if (!b.expiry_date) return -1
       return dir * a.expiry_date.localeCompare(b.expiry_date)
     })
-  }, [subscribers, monthlyLogBySubscriber, sortMode])
+  }, [subscribers, monthlyLogBySubscriber, sortMode, billingFilter])
 
   const groupedByLocation = useMemo(() => {
     if (!groupByLocation) return null
@@ -705,6 +737,26 @@ export function SubscribersListPage() {
           All
         </button>
         <button
+          onClick={() => setBillingFilter(billingFilter === 'paid' ? 'any' : 'paid')}
+          className={`shrink-0 rounded-full px-3 py-2 text-sm font-medium shadow-sm ${
+            billingFilter === 'paid'
+              ? 'bg-green-500 text-white'
+              : 'bg-white text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200'
+          }`}
+        >
+          Paid
+        </button>
+        <button
+          onClick={() => setBillingFilter(billingFilter === 'unpaid' ? 'any' : 'unpaid')}
+          className={`shrink-0 rounded-full px-3 py-2 text-sm font-medium shadow-sm ${
+            billingFilter === 'unpaid'
+              ? 'bg-amber-500 text-white'
+              : 'bg-white text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200'
+          }`}
+        >
+          Unpaid
+        </button>
+        <button
           onClick={() => updateFilter('debtMode', filters.debtMode === 'in_debt' ? 'any' : 'in_debt')}
           className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium shadow-sm ${
             filters.debtMode === 'in_debt'
@@ -735,7 +787,7 @@ export function SubscribersListPage() {
           Group by location
         </button>
         {activeFilterCount > 0 && (
-          <button onClick={() => setFilters(emptyFilters)} className="shrink-0 text-xs font-medium text-neutral-500">
+          <button onClick={clearAllFilters} className="shrink-0 text-xs font-medium text-neutral-500">
             Clear filters
           </button>
         )}

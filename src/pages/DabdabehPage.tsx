@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   DndContext,
@@ -39,15 +39,20 @@ function statusDotColor(log: MonthlyLogRow | undefined, debt: number): string {
 function SortableRow({
   entry,
   log,
+  draggable,
   onRemove,
   onPay,
 }: {
   entry: CollectTrackEntry
   log: MonthlyLogRow | undefined
+  draggable: boolean
   onRemove: () => void
   onPay: () => void
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: entry.id })
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: entry.id,
+    disabled: !draggable,
+  })
   const sub = entry.subscriber
 
   return (
@@ -56,14 +61,16 @@ function SortableRow({
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
       className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2"
     >
-      <button {...attributes} {...listeners} className="shrink-0 touch-none text-neutral-300" aria-label="Drag to reorder">
-        <GripVertical size={16} />
-      </button>
+      {draggable && (
+        <button {...attributes} {...listeners} className="shrink-0 touch-none text-neutral-300" aria-label="Drag to reorder">
+          <GripVertical size={16} />
+        </button>
+      )}
       <span className={`h-2 w-2 shrink-0 rounded-full ${statusDotColor(log, sub.debt)}`} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold text-neutral-900">{sub.name}</p>
         <p className="truncate text-xs text-neutral-500">
-          {sub.services?.companies?.name ?? '—'}
+          {[sub.addresses?.name, sub.services?.companies?.name].filter(Boolean).join(' · ') || '—'}
           {sub.expiry_date ? ` · exp ${new Date(sub.expiry_date + 'T00:00:00').getUTCDate()}` : ''}
         </p>
       </div>
@@ -99,8 +106,19 @@ export function DabdabehPage() {
   const [collectors, setCollectors] = useState<Collector[]>([])
   const [monthlyLogBySubscriber, setMonthlyLogBySubscriber] = useState<Record<string, MonthlyLogRow>>({})
   const [paymentSub, setPaymentSub] = useState<SubscriberWithRelations | null>(null)
+  const [sortMode, setSortMode] = useState<'manual' | 'address'>('manual')
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+
+  // Manual order is drag-reordered and persisted via reorderCollectTrack;
+  // address mode is a client-side sort only, so dragging is disabled while
+  // it's active (there's no "position" to save against).
+  const sortedEntries = useMemo(() => {
+    if (sortMode !== 'address') return entries
+    return [...entries].sort((a, b) =>
+      (a.subscriber.addresses?.name ?? '').localeCompare(b.subscriber.addresses?.name ?? ''),
+    )
+  }, [entries, sortMode])
 
   function refresh() {
     if (!staff) return
@@ -134,7 +152,7 @@ export function DabdabehPage() {
 
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
-    if (!staff || !over || active.id === over.id) return
+    if (!staff || !over || active.id === over.id || sortMode !== 'manual') return
     const oldIndex = entries.findIndex((e) => e.id === active.id)
     const newIndex = entries.findIndex((e) => e.id === over.id)
     if (oldIndex === -1 || newIndex === -1) return
@@ -157,8 +175,39 @@ export function DabdabehPage() {
     <div className="min-h-screen bg-neutral-50">
       <AppHeader>
         <main className="p-3">
-          <h1 className="mb-0.5 text-lg font-semibold text-neutral-900">Dabdabeh</h1>
-          <p className="mb-3 text-sm text-neutral-500">Your personal collect track -- drag to reorder.</p>
+          <div className="mb-0.5 flex items-center gap-2">
+            <h1 className="text-lg font-semibold text-neutral-900">Dabdabeh</h1>
+            <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-500">
+              {entries.length}
+            </span>
+          </div>
+          <p className="mb-3 text-sm text-neutral-500">
+            Your personal collect track
+            {sortMode === 'manual' ? ' -- drag to reorder.' : ', sorted by address.'}
+          </p>
+
+          {entries.length > 0 && (
+            <div className="mb-3 flex gap-1 rounded-full bg-neutral-100 p-1">
+              <button
+                type="button"
+                onClick={() => setSortMode('manual')}
+                className={`flex-1 rounded-full px-3 py-1.5 text-xs font-semibold ${
+                  sortMode === 'manual' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'
+                }`}
+              >
+                Manual order
+              </button>
+              <button
+                type="button"
+                onClick={() => setSortMode('address')}
+                className={`flex-1 rounded-full px-3 py-1.5 text-xs font-semibold ${
+                  sortMode === 'address' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'
+                }`}
+              >
+                Sort by address
+              </button>
+            </div>
+          )}
 
           {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
           {loading && <p className="text-sm text-neutral-500">Loading…</p>}
@@ -172,13 +221,14 @@ export function DabdabehPage() {
 
           {entries.length > 0 && (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={entries.map((e) => e.id)} strategy={verticalListSortingStrategy}>
+              <SortableContext items={sortedEntries.map((e) => e.id)} strategy={verticalListSortingStrategy}>
                 <div className="space-y-1.5">
-                  {entries.map((entry) => (
+                  {sortedEntries.map((entry) => (
                     <SortableRow
                       key={entry.id}
                       entry={entry}
                       log={monthlyLogBySubscriber[entry.subscriber.id]}
+                      draggable={sortMode === 'manual'}
                       onRemove={() => handleRemove(entry.subscriber.id)}
                       onPay={() => setPaymentSub(entry.subscriber)}
                     />
