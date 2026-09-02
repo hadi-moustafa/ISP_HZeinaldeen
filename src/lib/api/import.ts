@@ -187,10 +187,17 @@ export function normalizeRows(rawRows: RawImportRow[], companyName: string): Par
       companyName: trimmedCompanyName,
       serviceName: String(raw.Service ?? '').trim(),
       collectorName: blankToNull(raw.Collector),
-      address:
-        blankToNull(raw.Address) || blankToNull(raw.Region)
-          ? { line1: blankToNull(raw.Address), region: blankToNull(raw.Region) }
-          : null,
+      // The "region" key here is really "which predefined address entry to
+      // match/create" -- despite the name (left over from before the region
+      // concept was replaced by the addresses dropdown in
+      // 0020_addresses_and_collect_track.sql), it must be keyed off the
+      // Excel file's own Address column, not its Region column. The app's
+      // subscriber form and every list/card display subscribers.addresses
+      // (the address_id lookup) as "the address" -- the free-text
+      // subscribers.address column this also populates is legacy/unused.
+      // Previously this read raw.Region here, so every imported subscriber's
+      // displayed address was actually the Excel file's Region value.
+      address: blankToNull(raw.Address) ? { line1: blankToNull(raw.Address), region: blankToNull(raw.Address) } : null,
       building: blankToNull(raw.Building),
       password: blankToNull(raw.Password),
       switchValue: blankToNull(raw.Switch),
