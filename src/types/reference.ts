@@ -48,6 +48,18 @@ export interface Address {
   updated_at: string
 }
 
+// Second tier under Address, e.g. address "Jorn" can have its own regions
+// "Street 1", "Block A" -- a region only makes sense scoped to its parent
+// address, not as a standalone flat list.
+export interface Region {
+  id: string
+  address_id: string
+  name: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface Owner {
   id: string
   name: string

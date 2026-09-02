@@ -137,15 +137,24 @@ export function SubscriberDetailPage() {
           </div>
           <div>
             <dt className="text-neutral-500 dark:text-neutral-400">Address</dt>
-            <dd className="text-neutral-900 dark:text-neutral-100">{subscriber.address ?? '—'}</dd>
+            <dd className="text-neutral-900 dark:text-neutral-100">{subscriber.addresses?.name ?? '—'}</dd>
           </div>
           <div>
-            <dt className="text-neutral-500 dark:text-neutral-400">Address</dt>
-            <dd className="text-neutral-900 dark:text-neutral-100">{subscriber.addresses?.name ?? '—'}</dd>
+            <dt className="text-neutral-500 dark:text-neutral-400">Region</dt>
+            <dd className="text-neutral-900 dark:text-neutral-100">{subscriber.regions?.name ?? '—'}</dd>
           </div>
           <div>
             <dt className="text-neutral-500 dark:text-neutral-400">Building</dt>
             <dd className="text-neutral-900 dark:text-neutral-100">{subscriber.building ?? '—'}</dd>
+          </div>
+          <div>
+            {/* Legacy free-text address as originally typed/imported --
+                distinct from the predefined Address dropdown above, which
+                is what the rest of the app treats as "the address". Kept
+                visible (not just discarded) since it's real historical
+                data for subscribers imported before the dropdown existed. */}
+            <dt className="text-neutral-500 dark:text-neutral-400">Imported address text</dt>
+            <dd className="text-neutral-900 dark:text-neutral-100">{subscriber.address ?? '—'}</dd>
           </div>
         </dl>
 

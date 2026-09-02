@@ -7,6 +7,7 @@ const SUBSCRIBER_SELECT = `
   default_collector:collectors!default_collector_id(name),
   services(name, sell_price, paid_price, companies(name)),
   addresses(name),
+  regions(name),
   company:companies!company_id(name)
 `
 
@@ -63,6 +64,7 @@ export async function listSubscribers(
   if (filters.ownerId) query = query.eq('owner_id', filters.ownerId)
   if (filters.collectorId) query = query.eq('default_collector_id', filters.collectorId)
   if (filters.addressId) query = query.eq('address_id', filters.addressId)
+  if (filters.regionId) query = query.eq('region_id', filters.regionId)
   if (filters.serviceId) {
     query = query.eq('service_id', filters.serviceId)
   } else if (serviceIdsForCompany) {
@@ -181,6 +183,7 @@ export interface SubscriberInput {
   nationality: Subscriber['nationality']
   building: string | null
   address_id: string | null
+  region_id: string | null
   service_id: string | null
   company_id: string | null
   owner_id: string | null

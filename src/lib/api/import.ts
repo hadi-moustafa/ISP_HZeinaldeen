@@ -198,6 +198,10 @@ export function normalizeRows(rawRows: RawImportRow[], companyName: string): Par
       // Previously this read raw.Region here, so every imported subscriber's
       // displayed address was actually the Excel file's Region value.
       address: blankToNull(raw.Address) ? { line1: blankToNull(raw.Address), region: blankToNull(raw.Address) } : null,
+      // The file's actual Region column -- scoped under whichever address
+      // this row resolves to, server-side (see import_subscribers_batch in
+      // 0027_regions_under_address.sql).
+      regionName: blankToNull(raw.Region),
       building: blankToNull(raw.Building),
       password: blankToNull(raw.Password),
       switchValue: blankToNull(raw.Switch),
@@ -358,6 +362,7 @@ export function buildBatchRows(rows: ParsedRow[], ctx: ServiceResolutionContext)
         has_collector: Boolean(collector),
         default_collector_id: collector?.id ?? null,
         address: row.address,
+        region_name: row.regionName,
         building: row.building,
         password: row.password,
         switch: row.switchValue,

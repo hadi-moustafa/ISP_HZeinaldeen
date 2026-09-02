@@ -65,6 +65,11 @@ export interface ParsedRow {
   serviceName: string
   collectorName: string | null
   address: { line1: string | null; region: string | null } | null
+  // The Excel file's own Region column, scoped under whichever address
+  // this row resolves to (a region can't exist without a parent address).
+  // Distinct from `address.region` above, which despite its name is the
+  // predefined-address match key (fed from the Address column).
+  regionName: string | null
   building: string | null
   password: string | null
   switchValue: string | null
@@ -90,6 +95,7 @@ export interface ImportBatchRow {
   has_collector: boolean
   default_collector_id: string | null
   address: { line1: string | null; region: string | null } | null
+  region_name: string | null
   building: string | null
   password: string | null
   switch: string | null

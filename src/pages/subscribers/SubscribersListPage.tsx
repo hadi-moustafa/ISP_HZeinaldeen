@@ -14,6 +14,7 @@ import { listCollectors } from '../../lib/api/collectors'
 import { listCompanies } from '../../lib/api/companies'
 import { listServices } from '../../lib/api/services'
 import { listAddresses } from '../../lib/api/addresses'
+import { listRegions } from '../../lib/api/regions'
 import { addToCollectTrack } from '../../lib/api/collectTrack'
 import { listMonthlyLog } from '../../lib/api/reports'
 import { logActivity } from '../../lib/api/activityLog'
@@ -21,7 +22,7 @@ import type { SubscriberWithRelations } from '../../types/subscribers'
 import { emptyFilters } from '../../types/subscribers'
 import { FILTER_FIELDS, TEXT_FILTER_FIELDS, type FilterField } from '../../lib/subscriberFilterFields'
 import type { MonthlyLogRow } from '../../types/reports'
-import type { Owner, Collector, Company, ServiceWithCompany, Address } from '../../types/reference'
+import type { Owner, Collector, Company, ServiceWithCompany, Address, Region } from '../../types/reference'
 import { useStaff } from '../../context/StaffContext'
 import { HeaderActions } from '../../components/AppHeader'
 import { PaymentModal } from '../../components/subscriber/PaymentModal'
@@ -114,7 +115,7 @@ function SubscriberCard({
   const billingKey = billingKeyFor(log?.status, sub.debt)
   const style = BILLING_STYLES[billingKey]
   const pct = log && log.amount_due > 0 ? Math.round((log.amount_paid / log.amount_due) * 100) : 0
-  const addressLine = [sub.addresses?.name, sub.building].filter(Boolean).join(', ')
+  const addressLine = [sub.addresses?.name, sub.regions?.name, sub.building].filter(Boolean).join(', ')
 
   return (
     <div className={`relative rounded-2xl border-l-4 bg-white p-4 shadow-sm dark:bg-neutral-800 ${style.border}`}>
@@ -255,6 +256,7 @@ export function SubscribersListPage() {
   const [companies, setCompanies] = useState<Company[]>([])
   const [services, setServices] = useState<ServiceWithCompany[]>([])
   const [addresses, setAddresses] = useState<Address[]>([])
+  const [regions, setRegions] = useState<Region[]>([])
   const [debtIds, setDebtIds] = useState<Set<string>>(new Set())
   const [monthlyLogBySubscriber, setMonthlyLogBySubscriber] = useState<Record<string, MonthlyLogRow>>({})
 
@@ -274,13 +276,22 @@ export function SubscribersListPage() {
   }
 
   useEffect(() => {
-    Promise.all([listOwners(), listCollectors(), listCompanies(), listServices(), listAddresses(), refreshBillingData()])
-      .then(([o, c, comp, s, addrs]) => {
+    Promise.all([
+      listOwners(),
+      listCollectors(),
+      listCompanies(),
+      listServices(),
+      listAddresses(),
+      listRegions(),
+      refreshBillingData(),
+    ])
+      .then(([o, c, comp, s, addrs, rgs]) => {
         setOwners(o)
         setCollectors(c)
         setCompanies(comp)
         setServices(s)
         setAddresses(addrs)
+        setRegions(rgs)
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load filters'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -289,6 +300,13 @@ export function SubscribersListPage() {
   const filteredServices = useMemo(
     () => (filters.companyId ? services.filter((s) => s.comp_id === filters.companyId) : services),
     [services, filters.companyId],
+  )
+
+  // Region is the filter's second tier, scoped under the chosen Address --
+  // empty (and the Region select disabled) until an Address is picked.
+  const filteredRegions = useMemo(
+    () => (filters.addressId ? regions.filter((r) => r.address_id === filters.addressId) : []),
+    [regions, filters.addressId],
   )
 
   useEffect(() => {
@@ -392,7 +410,7 @@ export function SubscribersListPage() {
         return {
           Name: s.name,
           Phone: s.phone ?? '',
-          Address: [s.addresses?.name, s.building].filter(Boolean).join(', '),
+          Address: [s.addresses?.name, s.regions?.name, s.building].filter(Boolean).join(', '),
           Service: s.services?.name ?? '',
           Company: s.services?.companies?.name ?? '',
           Owner: s.owners?.name ?? '',
@@ -614,18 +632,40 @@ export function SubscribersListPage() {
           )}
 
           {filterField === 'address' && (
-            <select
-              value={filters.addressId}
-              onChange={(e) => updateFilter('addressId', e.target.value)}
-              className="flex-1 rounded-full bg-white px-3 py-2.5 text-sm text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100"
-            >
-              <option value="">Any address</option>
-              {addresses.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
+            <div className="flex flex-1 gap-2">
+              <select
+                value={filters.addressId}
+                onChange={(e) => {
+                  // Picking a different address invalidates whatever region
+                  // was scoped to the old one -- the two-tier filter only
+                  // works one direction, address narrows region, not the
+                  // reverse.
+                  const addressId = e.target.value
+                  setFilters((f) => ({ ...f, addressId, regionId: '' }))
+                }}
+                className="min-w-0 flex-1 rounded-full bg-white px-3 py-2.5 text-sm text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100"
+              >
+                <option value="">Any address</option>
+                {addresses.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={filters.regionId}
+                onChange={(e) => updateFilter('regionId', e.target.value)}
+                disabled={!filters.addressId}
+                className="min-w-0 flex-1 rounded-full bg-white px-3 py-2.5 text-sm text-neutral-900 shadow-sm disabled:opacity-50 dark:bg-neutral-800 dark:text-neutral-100"
+              >
+                <option value="">{filters.addressId ? 'Any region' : 'Pick an address first'}</option>
+                {filteredRegions.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
 
           {filterField === 'nationality' && (

@@ -11,10 +11,11 @@ import { listCollectors } from '../../lib/api/collectors'
 import { listServices } from '../../lib/api/services'
 import { listCompanies } from '../../lib/api/companies'
 import { listAddresses } from '../../lib/api/addresses'
+import { listRegions } from '../../lib/api/regions'
 import { createPeriodInvoice } from '../../lib/api/invoices'
 import { logActivity } from '../../lib/api/activityLog'
 import { useStaff } from '../../context/StaffContext'
-import type { Owner, Collector, ServiceWithCompany, Address, Company } from '../../types/reference'
+import type { Owner, Collector, ServiceWithCompany, Address, Region, Company } from '../../types/reference'
 import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../lib/uiClasses'
 
 function currentPeriodMonth() {
@@ -48,6 +49,7 @@ const emptyForm: SubscriberInput = {
   nationality: null,
   building: '',
   address_id: '',
+  region_id: '',
   service_id: '',
   company_id: '',
   owner_id: '',
@@ -74,6 +76,7 @@ export function SubscriberFormPage() {
   const [services, setServices] = useState<ServiceWithCompany[]>([])
   const [companies, setCompanies] = useState<Company[]>([])
   const [addresses, setAddresses] = useState<Address[]>([])
+  const [regions, setRegions] = useState<Region[]>([])
   const [form, setForm] = useState<SubscriberInput>(emptyForm)
   const [loading, setLoading] = useState(isEdit)
   const [saving, setSaving] = useState(false)
@@ -84,13 +87,14 @@ export function SubscriberFormPage() {
   const [expiryTouched, setExpiryTouched] = useState(false)
 
   useEffect(() => {
-    Promise.all([listOwners(), listCollectors(), listServices(), listCompanies(), listAddresses()])
-      .then(([o, c, s, comp, addrs]) => {
+    Promise.all([listOwners(), listCollectors(), listServices(), listCompanies(), listAddresses(), listRegions()])
+      .then(([o, c, s, comp, addrs, rgs]) => {
         setOwners(o)
         setCollectors(c)
         setServices(s)
         setCompanies(comp)
         setAddresses(addrs)
+        setRegions(rgs)
         if (!isEdit) {
           // Collector defaults to whoever is logged in, when they're a
           // collector account (has a linked collector_id) -- admin logins
@@ -111,6 +115,7 @@ export function SubscriberFormPage() {
   const filteredServices = form.company_id
     ? services.filter((s) => s.comp_id === form.company_id)
     : services
+  const filteredRegions = form.address_id ? regions.filter((r) => r.address_id === form.address_id) : []
 
   useEffect(() => {
     if (!id) return
@@ -123,6 +128,7 @@ export function SubscriberFormPage() {
           nationality: sub.nationality,
           building: sub.building ?? '',
           address_id: sub.address_id ?? '',
+          region_id: sub.region_id ?? '',
           service_id: sub.service_id ?? '',
           company_id: sub.company_id ?? '',
           owner_id: sub.owner_id ?? '',
@@ -173,6 +179,7 @@ export function SubscriberFormPage() {
       nationality: form.nationality || null,
       building: form.building || null,
       address_id: form.address_id || null,
+      region_id: form.region_id || null,
       service_id: form.service_id || null,
       company_id: form.company_id || null,
       owner_id: form.owner_id || null,
@@ -258,7 +265,13 @@ export function SubscriberFormPage() {
         <div className="grid grid-cols-2 gap-3">
           <select
             value={form.address_id ?? ''}
-            onChange={(e) => update('address_id', e.target.value)}
+            onChange={(e) => {
+              const address_id = e.target.value
+              // Region only makes sense scoped to its parent address --
+              // switching (or clearing) the address invalidates whatever
+              // region was previously chosen.
+              setForm((f) => ({ ...f, address_id, region_id: '' }))
+            }}
             className={inputClass}
             required
           >
@@ -269,14 +282,28 @@ export function SubscriberFormPage() {
               </option>
             ))}
           </select>
-          <input
-            value={form.building ?? ''}
-            onChange={(e) => update('building', e.target.value)}
-            placeholder="Building"
+          <select
+            value={form.region_id ?? ''}
+            onChange={(e) => update('region_id', e.target.value)}
             className={inputClass}
-            required
-          />
+            disabled={!form.address_id}
+          >
+            <option value="">{form.address_id ? 'Region (optional)' : 'Select an address first'}</option>
+            {filteredRegions.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
         </div>
+
+        <input
+          value={form.building ?? ''}
+          onChange={(e) => update('building', e.target.value)}
+          placeholder="Building"
+          className={inputClass}
+          required
+        />
 
         <div className="grid grid-cols-2 gap-3">
           <select
