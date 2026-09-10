@@ -12,7 +12,7 @@ import {
   cardClass,
 } from '../../lib/uiClasses'
 
-const emptyForm = { name: '', notes: '', payment_phone: '', support_phone: '' }
+const emptyForm = { name: '', notes: '', payment_phone: '', support_phone: '', counts_in_totals: true }
 
 export function CompaniesPage() {
   const { staff } = useStaff()
@@ -53,6 +53,7 @@ export function CompaniesPage() {
       notes: company.notes ?? '',
       payment_phone: company.payment_phone ?? '',
       support_phone: company.support_phone ?? '',
+      counts_in_totals: company.counts_in_totals,
     })
     setModalOpen(true)
   }
@@ -64,6 +65,7 @@ export function CompaniesPage() {
       notes: form.notes || null,
       payment_phone: form.payment_phone || null,
       support_phone: form.support_phone || null,
+      counts_in_totals: form.counts_in_totals,
     }
     try {
       if (editing) {
@@ -109,6 +111,11 @@ export function CompaniesPage() {
               <div>
                 <p className="font-medium text-neutral-900 dark:text-neutral-100">
                   {company.name}
+                  {!company.counts_in_totals && (
+                    <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500 dark:bg-neutral-700 dark:text-neutral-300">
+                      not in totals
+                    </span>
+                  )}
                 </p>
                 {company.notes && (
                   <p className="text-sm text-neutral-500 dark:text-neutral-400">
@@ -187,6 +194,23 @@ export function CompaniesPage() {
             className={`${inputClass} mb-4`}
             rows={3}
           />
+          {/* Off for expense accounts that aren't really reseller companies:
+              they keep their card and their logged payments, they just stop
+              feeding the Company Analysis page's summary totals. */}
+          <label className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-neutral-200 px-3 py-2.5 dark:border-neutral-700">
+            <span className="text-sm text-neutral-700 dark:text-neutral-300">
+              Count in analysis totals
+              <span className="mt-0.5 block text-xs text-neutral-400">
+                Turn off for expense accounts, so their payments don't inflate the Company Analysis totals.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              checked={form.counts_in_totals}
+              onChange={(e) => setForm((f) => ({ ...f, counts_in_totals: e.target.checked }))}
+              className="mt-1 h-4 w-4 shrink-0"
+            />
+          </label>
           <div className="flex justify-end gap-2">
             <button
               type="button"

@@ -10,8 +10,16 @@ import { cardClass } from '../../lib/uiClasses'
 // services.paid_price, see companyPayments.ts) so the numbers here always
 // match what Company Payments shows -- this page is purely a different lens
 // on the same underlying totals. "Paid" is scoped to the current calendar
-// month and resets automatically when the month rolls over -- no payment
-// history is ever deleted, this view just stops summing prior months in.
+// month on both ends (0029) and resets automatically when the month rolls
+// over -- no payment history is ever deleted, this view just stops summing
+// other months in.
+//
+// The summary totals count only companies flagged counts_in_totals: an
+// expense account like "Hsen masrouf" has no services or subscribers, so
+// it can never owe anything, and folding its payments into "Paid this
+// month" overstated what actually went to the real reseller companies.
+// Those companies still get a card here (marked so the arithmetic reads
+// correctly) and still accept payments on the Company Payments page.
 export function CompanyPaymentsAnalysisPage() {
   const [dues, setDues] = useState<CompanyDue[]>([])
   const [loading, setLoading] = useState(true)
@@ -25,9 +33,15 @@ export function CompanyPaymentsAnalysisPage() {
   }, [])
 
   const totals = useMemo(() => {
-    const totalOwed = dues.reduce((sum, d) => sum + d.total_owed, 0)
-    const totalPaid = dues.reduce((sum, d) => sum + d.total_paid, 0)
-    return { totalOwed, totalPaid, totalBalance: Math.max(totalOwed - totalPaid, 0) }
+    const counted = dues.filter((d) => d.counts_in_totals)
+    const totalOwed = counted.reduce((sum, d) => sum + d.total_owed, 0)
+    const totalPaid = counted.reduce((sum, d) => sum + d.total_paid, 0)
+    return {
+      totalOwed,
+      totalPaid,
+      totalBalance: Math.max(totalOwed - totalPaid, 0),
+      excludedCount: dues.length - counted.length,
+    }
   }, [dues])
 
   const sortedDues = useMemo(
@@ -59,6 +73,14 @@ export function CompanyPaymentsAnalysisPage() {
         </div>
       )}
 
+      {!loading && totals.excludedCount > 0 && (
+        <p className="mb-4 text-xs text-neutral-500">
+          This month only. {totals.excludedCount} account
+          {totals.excludedCount > 1 ? 's are' : ' is'} shown below but left out of these totals — change that
+          per company in Admin → Companies.
+        </p>
+      )}
+
       <div className="space-y-3">
         {sortedDues.map((due) => {
           const balance = due.total_owed - due.total_paid
@@ -67,7 +89,14 @@ export function CompanyPaymentsAnalysisPage() {
           return (
             <div key={due.comp_id} className={cardClass}>
               <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="font-semibold text-neutral-900">{due.company_name}</p>
+                <div className="flex min-w-0 items-center gap-2">
+                  <p className="truncate font-semibold text-neutral-900">{due.company_name}</p>
+                  {!due.counts_in_totals && (
+                    <span className="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500">
+                      not in totals
+                    </span>
+                  )}
+                </div>
                 <span
                   className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                     settled ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'

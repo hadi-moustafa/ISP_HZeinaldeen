@@ -33,6 +33,7 @@ export interface CompanyInput {
   notes: string | null
   payment_phone: string | null
   support_phone: string | null
+  counts_in_totals: boolean
 }
 
 export async function createCompany(input: CompanyInput) {

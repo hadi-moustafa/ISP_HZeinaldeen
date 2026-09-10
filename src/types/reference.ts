@@ -4,6 +4,9 @@ export interface Company {
   notes: string | null
   payment_phone: string | null
   support_phone: string | null
+  // See CompanyDue.counts_in_totals -- excludes expense accounts from the
+  // Company Analysis page's summary totals.
+  counts_in_totals: boolean
   created_at: string
   updated_at: string
 }
