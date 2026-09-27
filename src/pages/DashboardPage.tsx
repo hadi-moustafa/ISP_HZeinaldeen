@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useStaff } from '../context/StaffContext'
 import { isAdmin } from '../lib/permissions'
-import { generateMonthlyInvoices, postponeInvoice, createPeriodInvoice } from '../lib/api/invoices'
+import { generateMonthlyInvoices } from '../lib/api/invoices'
 import {
   getDashboardSummary,
   getCollectionTotal,
@@ -29,24 +29,13 @@ import type { MonthlyLogRow } from '../types/reports'
 import { FILTER_FIELDS, TEXT_FILTER_FIELDS, type FilterField } from '../lib/subscriberFilterFields'
 import { AppHeader } from '../components/AppHeader'
 import { PaymentModal } from '../components/subscriber/PaymentModal'
+import { SubscriberRow } from '../components/subscriber/SubscriberRow'
+import { currentPeriodMonth, compareByExpiryDay, quickPostpone } from '../lib/subscriberRowHelpers'
 import { primaryButtonClass, cardClass } from '../lib/uiClasses'
-import { Search, Banknote, Pencil, Clock, ChevronDown, AlertTriangle } from 'lucide-react'
-
-function currentPeriodMonth() {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-}
+import { Search, ChevronDown, AlertTriangle } from 'lucide-react'
 
 function currentMonthLabel() {
   return new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
-}
-
-function statusDotColor(log: MonthlyLogRow | undefined, debt: number): string {
-  if (log?.status === 'partial') return 'bg-orange-500'
-  if (debt > 0) return 'bg-red-500'
-  if (log?.status === 'paid' || log?.status === 'waived') return 'bg-emerald-500'
-  if (log?.status === 'postponed') return 'bg-orange-500'
-  return 'bg-neutral-300'
 }
 
 function ForecastCard({ title, headerRight, children }: { title: string; headerRight?: ReactNode; children: ReactNode }) {
@@ -197,7 +186,7 @@ export function DashboardPage() {
             const term = filters.search.trim().toLowerCase()
             result = result.filter((r) => r.id.toLowerCase().includes(term))
           }
-          setSearchResults(result)
+          setSearchResults([...result].sort(compareByExpiryDay))
         })
         .catch(() => {
           if (!cancelled) setSearchResults([])
@@ -237,93 +226,15 @@ export function DashboardPage() {
     }
   }
 
-  // Quick postpone -- days-from-now rather than an absolute date, per
-  // explicit ask ("how much will this user be postponed... make it in
-  // days"). Creates the current period's invoice on demand first if one
-  // doesn't exist yet (same on-demand pattern PaymentModal uses), since
-  // postpone_invoice needs a real invoice row to act on.
   async function handleQuickPostpone(sub: SubscriberWithRelations) {
-    const daysStr = window.prompt(`Postpone ${sub.name}'s payment by how many days?`)
-    if (!daysStr) return
-    const days = Number(daysStr)
-    if (!Number.isFinite(days) || days <= 0) {
-      window.alert('Enter a whole number of days greater than 0.')
-      return
-    }
     setPostponingId(sub.id)
     try {
-      let log: MonthlyLogRow | undefined = monthlyLogBySubscriber[sub.id]
-      if (!log && sub.service_id) {
-        const period = currentPeriodMonth()
-        await createPeriodInvoice(sub.id, sub.service_id, period)
-        const rows = await listMonthlyLog(period)
-        setMonthlyLogBySubscriber(Object.fromEntries(rows.map((row) => [row.subscriber_id, row])))
-        log = rows.find((row) => row.subscriber_id === sub.id)
-      }
-      if (!log?.invoice_id) {
-        window.alert('This subscriber has no billable invoice to postpone.')
-        return
-      }
-      // Local getters/setters throughout -- never toISOString() for a
-      // date-only value, since it converts to UTC first and silently rolls
-      // the date back a day anywhere east of UTC (the same class of bug
-      // the Excel importer hit; see formatDateLocal in lib/api/import.ts).
-      const base = log.due_date ? new Date(`${log.due_date}T00:00:00`) : new Date()
-      base.setDate(base.getDate() + days)
-      const y = base.getFullYear()
-      const m = String(base.getMonth() + 1).padStart(2, '0')
-      const d = String(base.getDate()).padStart(2, '0')
-      const newDueDate = `${y}-${m}-${d}`
-      await postponeInvoice(log.invoice_id, newDueDate, `Postponed ${days} day(s) from the dashboard`, staff?.id ?? null)
-      refreshStats()
+      if (await quickPostpone(sub, monthlyLogBySubscriber[sub.id], staff?.id ?? null, 'dashboard')) refreshStats()
     } catch (err) {
       window.alert(err instanceof Error ? err.message : 'Failed to postpone')
     } finally {
       setPostponingId(null)
     }
-  }
-
-  function SubscriberRow({ sub, showActions = false }: { sub: SubscriberWithRelations; showActions?: boolean }) {
-    const log = monthlyLogBySubscriber[sub.id]
-    return (
-      <div className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2">
-        <span className={`h-2 w-2 shrink-0 rounded-full ${statusDotColor(log, sub.debt)}`} />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-neutral-900">{sub.name}</p>
-          <p className="truncate text-xs text-neutral-500">
-            {sub.services?.companies?.name ?? '—'}
-            {sub.expiry_date ? ` · exp ${new Date(sub.expiry_date + 'T00:00:00').getUTCDate()}` : ''}
-          </p>
-        </div>
-        {showActions && (
-          <>
-            <Link
-              to={`/subscribers/${sub.id}/edit`}
-              title="Edit subscriber"
-              className="flex shrink-0 items-center justify-center rounded-full bg-neutral-100 p-2 text-neutral-600"
-            >
-              <Pencil size={14} />
-            </Link>
-            <button
-              onClick={() => handleQuickPostpone(sub)}
-              disabled={postponingId === sub.id}
-              title="Postpone payment"
-              className="flex shrink-0 items-center justify-center rounded-full bg-amber-100 p-2 text-amber-700 disabled:opacity-50"
-            >
-              <Clock size={14} />
-            </button>
-          </>
-        )}
-        <button
-          onClick={() => setPaymentSub(sub)}
-          title="Log a payment"
-          className="flex shrink-0 items-center gap-1 rounded-full bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white"
-        >
-          <Banknote size={14} />
-          Pay
-        </button>
-      </div>
-    )
   }
 
   return (
@@ -521,7 +432,14 @@ export function DashboardPage() {
                 <p className="text-xs text-neutral-400">No subscribers match.</p>
               )}
               {searchResults.map((sub) => (
-                <SubscriberRow key={sub.id} sub={sub} showActions />
+                <SubscriberRow
+                  key={sub.id}
+                  sub={sub}
+                  log={monthlyLogBySubscriber[sub.id]}
+                  onPay={setPaymentSub}
+                  onPostpone={handleQuickPostpone}
+                  postponing={postponingId === sub.id}
+                />
               ))}
             </div>
           )}

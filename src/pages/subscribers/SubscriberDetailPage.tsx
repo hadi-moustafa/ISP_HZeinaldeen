@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { getSubscriber, deleteSubscriber } from '../../lib/api/subscribers'
 import type { SubscriberWithRelations } from '../../types/subscribers'
 import type { Collector } from '../../types/reference'
@@ -7,6 +7,7 @@ import { listCollectors } from '../../lib/api/collectors'
 import { logActivity } from '../../lib/api/activityLog'
 import { useStaff } from '../../context/StaffContext'
 import { InvoicesSection } from '../../components/subscriber/InvoicesSection'
+import { useGoBack } from '../../lib/navigation'
 import { secondaryButtonClass, dangerButtonClass, cardClass } from '../../lib/uiClasses'
 
 const statusBadgeClass: Record<string, string> = {
@@ -29,7 +30,7 @@ function formatCreatedDate(iso: string) {
 
 export function SubscriberDetailPage() {
   const { id } = useParams()
-  const navigate = useNavigate()
+  const goBack = useGoBack()
   const { staff } = useStaff()
 
   const [subscriber, setSubscriber] = useState<SubscriberWithRelations | null>(null)
@@ -63,7 +64,7 @@ export function SubscriberDetailPage() {
     try {
       await deleteSubscriber(id)
       logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} deleted subscriber ${subscriber.name}`, 'subscriber', id)
-      navigate('/subscribers')
+      goBack()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete subscriber')
     }
@@ -75,9 +76,9 @@ export function SubscriberDetailPage() {
 
   return (
     <div>
-      <Link to="/subscribers" className="mb-4 inline-block text-sm text-blue-600 dark:text-blue-400">
-        ← Back to subscribers
-      </Link>
+      <button onClick={goBack} className="mb-4 inline-block text-sm text-blue-600 dark:text-blue-400">
+        ← Back
+      </button>
 
       {error && <p className="mb-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
 

@@ -1,9 +1,10 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, NavLink, useLocation } from 'react-router-dom'
-import { Menu, X, LogOut, ChevronDown } from 'lucide-react'
+import { Menu, X, LogOut, ChevronDown, ArrowLeft } from 'lucide-react'
 import { useStaff } from '../context/StaffContext'
 import { isAdmin, isCollector } from '../lib/permissions'
+import { homePath, useGoBack } from '../lib/navigation'
 
 const HeaderActionsContext = createContext<HTMLDivElement | null>(null)
 
@@ -87,6 +88,13 @@ export function AppHeader({ title = 'ISP Manager', children }: { title?: string;
   }
 
   const visiblePrimary = visibleLinks(primaryLinks, staff)
+  const home = homePath(staff)
+  const goBack = useGoBack()
+  // Drawer navigation from anywhere but home *replaces* the current entry
+  // instead of pushing, so history is always [home, current page] -- the
+  // phone's own back button then returns to the dashboard from any
+  // top-level page, same as the header's back arrow.
+  const replaceOnNav = location.pathname !== home
 
   return (
     <HeaderActionsContext.Provider value={actionsNode}>
@@ -98,8 +106,17 @@ export function AppHeader({ title = 'ISP Manager', children }: { title?: string;
         >
           <Menu size={22} />
         </button>
+        {location.pathname !== home && (
+          <button
+            onClick={goBack}
+            aria-label="Back"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-neutral-700 active:bg-neutral-100"
+          >
+            <ArrowLeft size={20} />
+          </button>
+        )}
         <Link
-          to={isCollector(staff) ? '/subscribers' : '/'}
+          to={home}
           className="truncate font-semibold text-neutral-900"
         >
           {title}
@@ -140,6 +157,7 @@ export function AppHeader({ title = 'ISP Manager', children }: { title?: string;
                       key={link.to}
                       to={link.to}
                       end={link.to === '/'}
+                      replace={replaceOnNav}
                       onClick={() => setMenuOpen(false)}
                       className={({ isActive }) =>
                         `block rounded-md px-3 py-2.5 text-sm font-medium ${
@@ -180,6 +198,7 @@ export function AppHeader({ title = 'ISP Manager', children }: { title?: string;
                           <NavLink
                             key={link.to}
                             to={link.to}
+                            replace={replaceOnNav}
                             onClick={() => setMenuOpen(false)}
                             className={({ isActive }) =>
                               `block rounded-md py-2 pl-6 pr-3 text-sm font-medium ${

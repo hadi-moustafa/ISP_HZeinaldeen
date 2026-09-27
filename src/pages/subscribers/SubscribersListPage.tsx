@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { Plus, Download, Filter, Search, MoreVertical, ChevronDown, Banknote } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Plus, Download, Filter, Search, ChevronDown } from 'lucide-react'
 import {
   listSubscribers,
   listDebtSubscriberIds,
-  deleteSubscriber,
   bulkDeleteSubscribers,
   bulkSetConnectionStatus,
   type SubscriberSearchField,
@@ -26,44 +25,12 @@ import type { Owner, Collector, Company, ServiceWithCompany, Address, Region } f
 import { useStaff } from '../../context/StaffContext'
 import { HeaderActions } from '../../components/AppHeader'
 import { PaymentModal } from '../../components/subscriber/PaymentModal'
+import { SubscriberRow } from '../../components/subscriber/SubscriberRow'
+import { currentPeriodMonth, compareByExpiryDay, quickPostpone } from '../../lib/subscriberRowHelpers'
 import { exportToExcel } from '../../lib/exportExcel'
 import { useLocalStorageState } from '../../lib/useLocalStorageState'
 
 type BillingKey = 'paid' | 'debt' | 'postponed' | 'partial' | 'none'
-
-// Literal client-specified scheme: green = paid, orange = postponed/partial, red = debt (fully unpaid).
-const BILLING_STYLES: Record<BillingKey, { border: string; pill: string; bar: string; amount: string }> = {
-  paid: {
-    border: 'border-l-green-500',
-    pill: 'bg-green-100 text-green-700',
-    bar: 'bg-green-500',
-    amount: 'text-green-600',
-  },
-  debt: {
-    border: 'border-l-red-500',
-    pill: 'bg-red-100 text-red-700',
-    bar: 'bg-red-500',
-    amount: 'text-red-600',
-  },
-  postponed: {
-    border: 'border-l-orange-500',
-    pill: 'bg-orange-100 text-orange-700',
-    bar: 'bg-orange-500',
-    amount: 'text-orange-600',
-  },
-  partial: {
-    border: 'border-l-orange-500',
-    pill: 'bg-orange-100 text-orange-700',
-    bar: 'bg-orange-500',
-    amount: 'text-orange-600',
-  },
-  none: {
-    border: 'border-l-neutral-300',
-    pill: 'bg-neutral-100 text-neutral-500',
-    bar: 'bg-neutral-300',
-    amount: 'text-neutral-500',
-  },
-}
 
 // debt (subscribers.debt, live-synced by DB triggers) is the authoritative
 // signal for red -- it also catches debt carried from a prior period that
@@ -80,152 +47,6 @@ function billingKeyFor(status: string | undefined, debt: number): BillingKey {
   return 'debt' // unpaid
 }
 
-function currentPeriodMonth() {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-}
-
-// Module-level, not nested inside SubscribersListPage -- a component
-// defined inside another component's body gets a brand-new function
-// identity every render, so React treats every card as a different
-// component type and remounts the *entire* list on any parent state
-// change (e.g. toggling one checkbox), which resets scroll position to
-// the top. Hoisting it here with explicit props fixes that: only the
-// props that actually changed cause a re-render, not a remount.
-function SubscriberCard({
-  sub,
-  log,
-  selected,
-  onToggleSelect,
-  menuOpen,
-  onToggleMenu,
-  onDelete,
-  onPay,
-}: {
-  sub: SubscriberWithRelations
-  log: MonthlyLogRow | undefined
-  selected: boolean
-  onToggleSelect: (id: string) => void
-  menuOpen: boolean
-  onToggleMenu: (id: string) => void
-  onDelete: (sub: SubscriberWithRelations) => void
-  onPay: (sub: SubscriberWithRelations) => void
-}) {
-  const navigate = useNavigate()
-  const billingKey = billingKeyFor(log?.status, sub.debt)
-  const style = BILLING_STYLES[billingKey]
-  const pct = log && log.amount_due > 0 ? Math.round((log.amount_paid / log.amount_due) * 100) : 0
-  const addressLine = [sub.addresses?.name, sub.regions?.name, sub.building].filter(Boolean).join(', ')
-
-  return (
-    <div className={`relative rounded-2xl border-l-4 bg-white p-4 shadow-sm dark:bg-neutral-800 ${style.border}`}>
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={selected}
-            onChange={() => onToggleSelect(sub.id)}
-            aria-label={`Select ${sub.name}`}
-            className="h-4 w-4 rounded border-neutral-300 text-indigo-600"
-          />
-          {sub.external_username && (
-            <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
-              {sub.external_username}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <span
-            title="Expiry date"
-            className="rounded-md bg-neutral-100 px-2 py-1 text-xs font-medium text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300"
-          >
-            Exp: {sub.expiry_date ? new Date(sub.expiry_date).getUTCDate() : '—'}
-          </span>
-          <div className="relative">
-            <button
-              onClick={() => onToggleMenu(sub.id)}
-              className="relative z-20 p-0.5"
-              aria-label="More actions"
-            >
-              <MoreVertical size={16} className="text-neutral-400" />
-            </button>
-            {menuOpen && (
-              <div className="absolute right-0 top-full z-20 mt-1 w-32 rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-800">
-                <button
-                  onClick={() => navigate(`/subscribers/${sub.id}`)}
-                  className="block w-full px-3 py-1.5 text-left text-sm text-neutral-700 hover:bg-neutral-50 dark:text-neutral-200 dark:hover:bg-neutral-700"
-                >
-                  View
-                </button>
-                <button
-                  onClick={() => navigate(`/subscribers/${sub.id}/edit`)}
-                  className="block w-full px-3 py-1.5 text-left text-sm text-neutral-700 hover:bg-neutral-50 dark:text-neutral-200 dark:hover:bg-neutral-700"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => onDelete(sub)}
-                  className="block w-full px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
-                >
-                  Delete
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <dl className="mb-2 grid grid-cols-[70px_1fr] gap-y-1 text-sm">
-        <dt className="text-neutral-400">Name</dt>
-        <dd className="font-medium text-neutral-800 dark:text-neutral-100">
-          <Link to={`/subscribers/${sub.id}`} className="hover:underline">
-            {sub.name}
-          </Link>
-          {sub.connection_status !== 'active' && (
-            <span className="ml-2 rounded bg-neutral-200 px-1.5 py-0.5 text-[10px] font-medium uppercase text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300">
-              {sub.connection_status}
-            </span>
-          )}
-        </dd>
-        <dt className="text-neutral-400">Address</dt>
-        <dd className="text-neutral-700 dark:text-neutral-300">{addressLine || '—'}</dd>
-        <dt className="text-neutral-400">Company</dt>
-        <dd className="text-neutral-700 dark:text-neutral-300">{sub.company?.name ?? '—'}</dd>
-        <dt className="text-neutral-400">Service</dt>
-        <dd className="font-medium text-neutral-800 dark:text-neutral-100">{sub.services?.name ?? '—'}</dd>
-        <dt className="text-neutral-400">Collector</dt>
-        <dd className="text-neutral-700 dark:text-neutral-300">{sub.default_collector?.name ?? '—'}</dd>
-      </dl>
-
-      <div className="flex items-center gap-2">
-        {log ? (
-          <>
-            <div className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-700">
-              <div className={`h-full rounded-full ${style.bar}`} style={{ width: `${Math.min(pct, 100)}%` }} />
-            </div>
-            <span className={`shrink-0 text-xs font-bold ${style.amount}`}>{pct}%</span>
-            <span className="shrink-0 text-xs text-neutral-400">
-              {log.amount_paid}/{log.amount_due}
-            </span>
-          </>
-        ) : (
-          <p className="flex-1 text-xs text-neutral-400">No invoice this month</p>
-        )}
-        <button
-          onClick={() => onPay(sub)}
-          title="Log a payment"
-          className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold text-white ${
-            billingKey === 'paid' ? 'bg-emerald-500' : 'bg-neutral-400'
-          }`}
-        >
-          <Banknote size={16} />
-          Pay
-        </button>
-      </div>
-    </div>
-  )
-}
-
 // Superset of the API's SubscriberSearchField: the free-text modes (name/id/
 // owner/username) map straight through to the API's search+searchField
 // mechanism; the rest (phone/nationalId/notes/collector/company/service/
@@ -240,7 +61,7 @@ export function SubscribersListPage() {
   const [filters, setFilters] = useLocalStorageState('isp:subscribers-filters:filters', emptyFilters)
   const [filterField, setFilterField] = useLocalStorageState<FilterField>('isp:subscribers-filters:field', 'name')
   const [searchFieldMenuOpen, setSearchFieldMenuOpen] = useState(false)
-  const [openCardMenuId, setOpenCardMenuId] = useState<string | null>(null)
+  const [postponingId, setPostponingId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   // Which subscriber the shared PaymentModal is open for, if any --
@@ -260,9 +81,11 @@ export function SubscribersListPage() {
   const [debtIds, setDebtIds] = useState<Set<string>>(new Set())
   const [monthlyLogBySubscriber, setMonthlyLogBySubscriber] = useState<Record<string, MonthlyLogRow>>({})
 
-  const [sortMode, setSortMode] = useLocalStorageState<'none' | 'expiry_asc' | 'expiry_desc'>(
-    'isp:subscribers-filters:sort',
-    'none',
+  // New storage key: the old one could hold 'none' (unsorted), which no
+  // longer exists -- lists always read smallest-to-largest by default now.
+  const [sortMode, setSortMode] = useLocalStorageState<'expiry_asc' | 'expiry_desc'>(
+    'isp:subscribers-filters:sort-v2',
+    'expiry_asc',
   )
   const [billingFilter, setBillingFilter] = useLocalStorageState<'any' | 'paid' | 'unpaid'>(
     'isp:subscribers-filters:billing',
@@ -383,14 +206,14 @@ export function SubscribersListPage() {
       return value !== ''
     }).length +
     (billingFilter !== 'any' ? 1 : 0) +
-    (sortMode !== 'none' ? 1 : 0) +
+    (sortMode !== 'expiry_asc' ? 1 : 0) +
     (filterField !== 'name' ? 1 : 0)
 
   function clearAllFilters() {
     setFilters(emptyFilters)
     setFilterField('name')
     setBillingFilter('any')
-    setSortMode('none')
+    setSortMode('expiry_asc')
   }
 
   function toggleSelect(id: string) {
@@ -403,7 +226,7 @@ export function SubscribersListPage() {
   }
 
   function handleExport() {
-    const rows = selectedIds.size > 0 ? subscribers.filter((s) => selectedIds.has(s.id)) : subscribers
+    const rows = selectedIds.size > 0 ? displaySubscribers.filter((s) => selectedIds.has(s.id)) : displaySubscribers
     exportToExcel(
       'subscribers',
       rows.map((s) => {
@@ -423,23 +246,16 @@ export function SubscribersListPage() {
     )
   }
 
-  // Pay is always clickable, even with no invoice yet this period -- the
-  // shared PaymentModal only writes to the DB at actual submit time, never
-  // just from opening.
-  function openPaymentModal(sub: SubscriberWithRelations) {
-    setOpenCardMenuId(null)
-    setPaymentSub(sub)
-  }
-
-  async function handleDelete(sub: SubscriberWithRelations) {
-    setOpenCardMenuId(null)
-    if (!confirm(`Delete subscriber "${sub.name}"?`)) return
+  async function handleQuickPostpone(sub: SubscriberWithRelations) {
+    setPostponingId(sub.id)
     try {
-      await deleteSubscriber(sub.id)
-      logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} deleted subscriber ${sub.name}`, 'subscriber', sub.id)
-      setSubscribers((prev) => prev.filter((s) => s.id !== sub.id))
+      if (await quickPostpone(sub, monthlyLogBySubscriber[sub.id], staff?.id ?? null, 'subscriber list')) {
+        await refreshBillingData()
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete subscriber')
+      setError(err instanceof Error ? err.message : 'Failed to postpone')
+    } finally {
+      setPostponingId(null)
     }
   }
 
@@ -485,14 +301,10 @@ export function SubscribersListPage() {
     }
   }
 
-  const menuOverlayOpen = searchFieldMenuOpen || openCardMenuId !== null
 
-  // Paid subscribers always sort to the bottom, independent of direction --
-  // within each of the two groups (not-paid, paid) sort by expiry_date per
-  // the selected direction, with no-expiry-date subscribers last in their
-  // group. billingKeyFor/monthlyLogBySubscriber are the same paid-status
-  // signal used for the card border color, so "paid" here means the same
-  // thing it does visually on each card.
+  // Always smallest-to-largest expiry day by default (client instruction:
+  // "view every output in increasing order"), with a descending option.
+  // Sorted by day-of-month, since that's the number each row shows.
   const displaySubscribers = useMemo(() => {
     const billingFiltered =
       billingFilter === 'any'
@@ -501,30 +313,13 @@ export function SubscribersListPage() {
             const paid = billingKeyFor(monthlyLogBySubscriber[s.id]?.status, s.debt) === 'paid'
             return billingFilter === 'paid' ? paid : !paid
           })
-    if (sortMode === 'none') return billingFiltered
-    const dir = sortMode === 'expiry_asc' ? 1 : -1
-    return [...billingFiltered].sort((a, b) => {
-      const aPaid = billingKeyFor(monthlyLogBySubscriber[a.id]?.status, a.debt) === 'paid'
-      const bPaid = billingKeyFor(monthlyLogBySubscriber[b.id]?.status, b.debt) === 'paid'
-      if (aPaid !== bPaid) return aPaid ? 1 : -1
-      if (!a.expiry_date && !b.expiry_date) return 0
-      if (!a.expiry_date) return 1
-      if (!b.expiry_date) return -1
-      return dir * a.expiry_date.localeCompare(b.expiry_date)
-    })
+    const sorted = [...billingFiltered].sort(compareByExpiryDay)
+    return sortMode === 'expiry_desc' ? sorted.reverse() : sorted
   }, [subscribers, monthlyLogBySubscriber, sortMode, billingFilter])
 
   return (
     <div>
-      {menuOverlayOpen && (
-        <div
-          className="fixed inset-0 z-10"
-          onClick={() => {
-            setSearchFieldMenuOpen(false)
-            setOpenCardMenuId(null)
-          }}
-        />
-      )}
+      {searchFieldMenuOpen && <div className="fixed inset-0 z-10" onClick={() => setSearchFieldMenuOpen(false)} />}
 
       <HeaderActions>
         <button
@@ -632,7 +427,8 @@ export function SubscribersListPage() {
           )}
 
           {filterField === 'address' && (
-            <div className="flex flex-1 gap-2">
+            <>
+              <div className="flex flex-1 gap-2">
               <select
                 value={filters.addressId}
                 onChange={(e) => {
@@ -665,7 +461,19 @@ export function SubscribersListPage() {
                   </option>
                 ))}
               </select>
-            </div>
+              </div>
+              {/* Address narrows the list, then the name search narrows it
+                  further -- both filters apply together. */}
+              <div className="flex w-full items-center rounded-full bg-white px-3 shadow-sm dark:bg-neutral-800">
+                <Search size={16} className="mr-2 shrink-0 text-neutral-400" />
+                <input
+                  value={filters.search}
+                  onChange={(e) => updateFilter('search', e.target.value)}
+                  placeholder="Search by name…"
+                  className="min-w-0 flex-1 bg-transparent py-2.5 text-sm text-neutral-900 outline-none dark:text-neutral-100"
+                />
+              </div>
+            </>
           )}
 
           {filterField === 'nationality' && (
@@ -792,7 +600,6 @@ export function SubscribersListPage() {
           onChange={(e) => setSortMode(e.target.value as typeof sortMode)}
           className="shrink-0 rounded-full bg-white px-3 py-2 text-sm text-neutral-700 shadow-sm dark:bg-neutral-800 dark:text-neutral-200"
         >
-          <option value="none">Sort: default</option>
           <option value="expiry_asc">Expiry ↑</option>
           <option value="expiry_desc">Expiry ↓</option>
         </select>
@@ -843,18 +650,17 @@ export function SubscribersListPage() {
       {error && <p className="mb-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
       {loading && <p className="text-neutral-500 dark:text-neutral-400">Loading…</p>}
 
-      <div className="space-y-3">
+      <div className="space-y-1.5">
         {displaySubscribers.map((sub) => (
-          <SubscriberCard
+          <SubscriberRow
             key={sub.id}
             sub={sub}
             log={monthlyLogBySubscriber[sub.id]}
             selected={selectedIds.has(sub.id)}
             onToggleSelect={toggleSelect}
-            menuOpen={openCardMenuId === sub.id}
-            onToggleMenu={(id) => setOpenCardMenuId(openCardMenuId === id ? null : id)}
-            onDelete={handleDelete}
-            onPay={openPaymentModal}
+            onPay={setPaymentSub}
+            onPostpone={handleQuickPostpone}
+            postponing={postponingId === sub.id}
           />
         ))}
         {!loading && subscribers.length === 0 && (

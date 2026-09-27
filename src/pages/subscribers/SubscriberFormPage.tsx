@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
+import { useGoBack } from '../../lib/navigation'
 import {
   createSubscriber,
   getSubscriber,
@@ -68,7 +69,9 @@ const emptyForm: SubscriberInput = {
 export function SubscriberFormPage() {
   const { id } = useParams()
   const isEdit = Boolean(id)
-  const navigate = useNavigate()
+  // Save and Cancel both return to wherever the form was opened from
+  // (dashboard search, subscriber list, detail page), not a fixed route.
+  const goBack = useGoBack()
   const { staff } = useStaff()
 
   const [owners, setOwners] = useState<Owner[]>([])
@@ -195,7 +198,7 @@ export function SubscriberFormPage() {
       if (isEdit && id) {
         await updateSubscriber(id, input)
         logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} edited subscriber ${input.name}`, 'subscriber', id)
-        navigate(`/subscribers/${id}`)
+        goBack()
       } else {
         const created = await createSubscriber(input)
         logActivity(staff?.id ?? null, `${staff?.username ?? 'Someone'} created subscriber ${input.name}`, 'subscriber', created.id)
@@ -207,7 +210,7 @@ export function SubscriberFormPage() {
           await createPeriodInvoice(created.id, input.service_id, currentPeriodMonth())
         }
 
-        navigate(`/subscribers/${created.id}`)
+        goBack()
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save subscriber')
@@ -458,7 +461,7 @@ export function SubscriberFormPage() {
         </div>
 
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={() => navigate(-1)} className={secondaryButtonClass}>
+          <button type="button" onClick={goBack} className={secondaryButtonClass}>
             Cancel
           </button>
           <button type="submit" disabled={saving} className={primaryButtonClass}>
