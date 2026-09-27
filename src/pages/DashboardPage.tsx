@@ -22,6 +22,7 @@ import { listOwners } from '../lib/api/owners'
 import { listCompanies } from '../lib/api/companies'
 import { listAddresses } from '../lib/api/addresses'
 import { emptyFilters } from '../types/subscribers'
+import { useLocalStorageState } from '../lib/useLocalStorageState'
 import type { SubscriberWithRelations } from '../types/subscribers'
 import type { ServiceWithCompany, Owner, Company, Address } from '../types/reference'
 import type { Collector } from '../types/reference'
@@ -65,13 +66,15 @@ export function DashboardPage() {
   const [generateResult, setGenerateResult] = useState<string | null>(null)
   const [lastRun, setLastRun] = useState<InvoiceGenerationRun | null>(null)
 
-  const [filters, setFilters] = useState(emptyFilters)
-  const [filterField, setFilterField] = useState<FilterField>('name')
+  // Search/filter/Paid-Unpaid survive closing the browser (localStorage);
+  // only the Clear button resets them.
+  const [filters, setFilters] = useLocalStorageState('isp:dashboard-filters:filters', emptyFilters)
+  const [filterField, setFilterField] = useLocalStorageState<FilterField>('isp:dashboard-filters:field', 'name')
   const [filterFieldMenuOpen, setFilterFieldMenuOpen] = useState(false)
   const [searchResults, setSearchResults] = useState<SubscriberWithRelations[]>([])
   // Paid / Unpaid toggle, applied on top of whatever search/filter is set.
   // On its own (no search or filter) it lists everyone paid / unpaid.
-  const [paidFilter, setPaidFilter] = useState<'any' | 'paid' | 'unpaid'>('any')
+  const [paidFilter, setPaidFilter] = useLocalStorageState<'any' | 'paid' | 'unpaid'>('isp:dashboard-filters:paid', 'any')
   const [searching, setSearching] = useState(false)
 
   const [services, setServices] = useState<ServiceWithCompany[]>([])
@@ -477,6 +480,7 @@ export function DashboardPage() {
                 <button
                   onClick={() => {
                     setFilters(emptyFilters)
+                    setFilterField('name')
                     setPaidFilter('any')
                   }}
                   className="text-xs font-medium text-neutral-500"
