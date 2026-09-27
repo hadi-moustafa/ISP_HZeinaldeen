@@ -1,4 +1,5 @@
 import { supabase } from '../supabase'
+import { fetchAllRows } from './fetchAll'
 import type { Subscriber, SubscriberFilters, SubscriberWithRelations } from '../../types/subscribers'
 
 const SUBSCRIBER_SELECT = `
@@ -12,37 +13,6 @@ const SUBSCRIBER_SELECT = `
 `
 
 export type SubscriberSearchField = 'name' | 'id' | 'owner' | 'username'
-
-// Active subscribers whose expiry_date falls within [fromDate, toDate]
-// inclusive -- used by the dashboard's expiry-watch feature, which buckets
-// this into cumulative windows (today+tomorrow / today..+2 / today..+5),
-// not exact-day snapshots.
-export async function listSubscribersByExpiryRange(fromDate: string, toDate: string) {
-  const { data, error } = await supabase
-    .from('subscribers')
-    .select(SUBSCRIBER_SELECT)
-    .eq('connection_status', 'active')
-    .gte('expiry_date', fromDate)
-    .lte('expiry_date', toDate)
-    .order('name')
-  if (error) throw error
-  return data as unknown as SubscriberWithRelations[]
-}
-
-// Active subscribers whose expiry_date is strictly before fromDate -- i.e.
-// already expired and needing renewal. Used by the "Company payments due"
-// dashboard table's "Have" column to compute what's already come due for
-// each company, as opposed to what's still ahead.
-export async function listSubscribersByExpiryBefore(fromDate: string) {
-  const { data, error } = await supabase
-    .from('subscribers')
-    .select(SUBSCRIBER_SELECT)
-    .eq('connection_status', 'active')
-    .lt('expiry_date', fromDate)
-    .order('name')
-  if (error) throw error
-  return data as unknown as SubscriberWithRelations[]
-}
 
 export async function listSubscribersLite() {
   const { data, error } = await supabase
@@ -58,6 +28,17 @@ export async function listSubscribers(
   serviceIdsForCompany: string[] | null,
   searchField: SubscriberSearchField = 'name',
   ownerIdsForSearch: string[] | null = null,
+) {
+  return fetchAllRows<SubscriberWithRelations>((from, to) =>
+    buildSubscriberQuery(filters, serviceIdsForCompany, searchField, ownerIdsForSearch).order('name').order('id').range(from, to),
+  )
+}
+
+function buildSubscriberQuery(
+  filters: SubscriberFilters,
+  serviceIdsForCompany: string[] | null,
+  searchField: SubscriberSearchField,
+  ownerIdsForSearch: string[] | null,
 ) {
   let query = supabase.from('subscribers').select(SUBSCRIBER_SELECT)
 
@@ -75,7 +56,10 @@ export async function listSubscribers(
   if (filters.expiryTo) query = query.lte('expiry_date', filters.expiryTo)
   if (filters.connectionFrom) query = query.gte('connection_date', filters.connectionFrom)
   if (filters.connectionTo) query = query.lte('connection_date', filters.connectionTo)
-  if (filters.phone.trim()) query = query.ilike('phone', `%${filters.phone.trim().replace(/[%,]/g, '')}%`)
+  // Stored phones have no spaces (+96171123456, see 0032), so the typed
+  // search is matched on its digits alone -- "71 123" still finds it.
+  const phoneDigits = filters.phone.replace(/[^\d]/g, '')
+  if (phoneDigits) query = query.ilike('phone', `%${phoneDigits}%`)
   if (filters.nationality) query = query.eq('nationality', filters.nationality)
   if (filters.notes.trim()) query = query.ilike('notes', `%${filters.notes.trim().replace(/[%,]/g, '')}%`)
 
@@ -94,9 +78,7 @@ export async function listSubscribers(
     }
   }
 
-  const { data, error } = await query.order('name')
-  if (error) throw error
-  return data as unknown as SubscriberWithRelations[]
+  return query
 }
 
 // Subscribers missing at least one commonly-blank field from the Excel

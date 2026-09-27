@@ -9,6 +9,7 @@ import type {
   ImportLog,
 } from '../../types/import'
 import type { Company, Collector, ServiceWithCompany } from '../../types/reference'
+import { normalizePhone } from '../phone'
 
 // --- Step 1: read headers + apply a column mapping -------------------------
 
@@ -137,6 +138,18 @@ function parseExcelDate(value: unknown): string | null {
   // Already yyyy-mm-dd (dateNF above) or a parseable date string
   const match = str.match(/^\d{4}-\d{2}-\d{2}/)
   if (match) return match[0]
+  // Day-first text dates (05/09/2026, 5-9-26, 05.09.2026), the way dates are
+  // written in Lebanon. `new Date('05/09/2026')` would read it US-style as
+  // May 9th, so these are parsed explicitly and never fall through.
+  const dayFirst = str.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2}|\d{4})$/)
+  if (dayFirst) {
+    const day = Number(dayFirst[1])
+    const month = Number(dayFirst[2])
+    const year = dayFirst[3].length === 2 ? 2000 + Number(dayFirst[3]) : Number(dayFirst[3])
+    const check = new Date(year, month - 1, day)
+    if (check.getFullYear() !== year || check.getMonth() !== month - 1 || check.getDate() !== day) return null
+    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  }
   const parsed = new Date(str)
   if (Number.isNaN(parsed.getTime())) return null
   return formatDateLocal(parsed)
@@ -168,7 +181,9 @@ function normalizeNationality(value: unknown): 'Lebanese' | 'Syrian' | null {
 
 export function normalizeRows(rawRows: RawImportRow[], companyName: string): ParsedRow[] {
   const trimmedCompanyName = companyName.trim()
-  const seenUsernames = new Map<string, number>() // username -> first rowIndex seen
+  // Keyed case/space-insensitively: "Ali" and "ali " are the same account
+  // (the DB enforces this too -- see 0032).
+  const seenUsernames = new Map<string, number>() // normalized username -> first row position
   const rows: ParsedRow[] = rawRows.map((raw, i) => {
     const rowIndex = i + 2 // header is row 1 in the source file
     const externalUsername = String(raw.Username ?? '').trim()
@@ -214,17 +229,20 @@ export function normalizeRows(rawRows: RawImportRow[], companyName: string): Par
     }
 
     if (!externalUsername) row.issues.push({ type: 'missing_username' })
+    if (!row.name) row.issues.push({ type: 'missing_name' })
     if (!row.companyName) row.issues.push({ type: 'missing_company' })
     return row
   })
 
   for (const row of rows) {
     if (!row.externalUsername) continue
-    if (seenUsernames.has(row.externalUsername)) {
+    const key = normalizeName(row.externalUsername)
+    if (seenUsernames.has(key)) {
       row.issues.push({ type: 'duplicate_username' })
-      rows[seenUsernames.get(row.externalUsername)!].issues.push({ type: 'duplicate_username' })
+      const first = rows[seenUsernames.get(key)!]
+      if (!first.issues.some((i) => i.type === 'duplicate_username')) first.issues.push({ type: 'duplicate_username' })
     } else {
-      seenUsernames.set(row.externalUsername, rows.indexOf(row))
+      seenUsernames.set(key, rows.indexOf(row))
     }
   }
 
@@ -233,28 +251,58 @@ export function normalizeRows(rawRows: RawImportRow[], companyName: string): Par
 
 // --- Step 3: reference data + matching -------------------------------------
 
+// What an existing subscriber looks like right now -- the import preview
+// compares against it to show exactly what a re-import would change.
+export interface ExistingSubscriberSnapshot {
+  id: string
+  name: string
+  phone: string | null
+  expiry_date: string | null
+  connection_status: string
+  service_id: string | null
+  price: number | null
+}
+
 export interface ImportReferenceData {
   companies: Company[]
   services: ServiceWithCompany[]
   collectors: Collector[]
-  existingByUsername: Map<string, string> // external_username -> subscriber id
+  existingByUsername: Map<string, ExistingSubscriberSnapshot> // normalized username -> current values
+}
+
+// PostgREST returns at most 1000 rows per request, so a plain select would
+// silently stop matching existing subscribers past that many (and try to
+// re-create them). Page through until a short page comes back.
+async function fetchAllExistingSubscribers() {
+  const pageSize = 1000
+  const all: (ExistingSubscriberSnapshot & { external_username: string })[] = []
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('subscribers')
+      .select('id, external_username, name, phone, expiry_date, connection_status, service_id, price')
+      .not('external_username', 'is', null)
+      .order('id')
+      .range(from, from + pageSize - 1)
+    if (error) throw error
+    all.push(...(data as (ExistingSubscriberSnapshot & { external_username: string })[]))
+    if (!data || data.length < pageSize) return all
+  }
 }
 
 export async function loadImportReferenceData(): Promise<ImportReferenceData> {
-  const [companiesRes, servicesRes, collectorsRes, subscribersRes] = await Promise.all([
+  const [companiesRes, servicesRes, collectorsRes, existing] = await Promise.all([
     supabase.from('companies').select('*').order('name'),
     supabase.from('services').select('*, companies(name)').order('name'),
     supabase.from('collectors').select('*').order('name'),
-    supabase.from('subscribers').select('id, external_username').not('external_username', 'is', null),
+    fetchAllExistingSubscribers(),
   ])
   if (companiesRes.error) throw companiesRes.error
   if (servicesRes.error) throw servicesRes.error
   if (collectorsRes.error) throw collectorsRes.error
-  if (subscribersRes.error) throw subscribersRes.error
 
-  const existingByUsername = new Map<string, string>()
-  for (const s of subscribersRes.data as { id: string; external_username: string }[]) {
-    existingByUsername.set(s.external_username, s.id)
+  const existingByUsername = new Map<string, ExistingSubscriberSnapshot>()
+  for (const s of existing) {
+    existingByUsername.set(normalizeName(s.external_username), s)
   }
 
   return {
@@ -269,9 +317,18 @@ function normalizeName(name: string) {
   return name.trim().toLowerCase()
 }
 
-export function matchRows(rows: ParsedRow[], ref: ImportReferenceData) {
+// companyResolutions: the admin's mapping for a sheet title that doesn't
+// match a company by name. Services are only ever matched within the
+// file's company -- a same-named service under another company is never
+// picked (that would bill the wrong company and break the company/service
+// link), it's reported as unresolved instead.
+export function matchRows(
+  rows: ParsedRow[],
+  ref: ImportReferenceData,
+  companyResolutions: Map<string, string> = new Map(),
+) {
   for (const row of rows) {
-    row.existingSubscriberId = ref.existingByUsername.get(row.externalUsername) ?? null
+    row.existingSubscriberId = ref.existingByUsername.get(normalizeName(row.externalUsername))?.id ?? null
   }
 
   const companyByName = new Map(ref.companies.map((c) => [normalizeName(c.name), c]))
@@ -286,18 +343,27 @@ export function matchRows(rows: ParsedRow[], ref: ImportReferenceData) {
 
   const unresolvedCompanies = new Set<string>()
   const unresolvedServices = new Set<string>()
+  const unmatchedCollectors = new Set<string>()
 
   for (const row of rows) {
-    if (row.companyName && !companyByName.has(normalizeName(row.companyName))) {
+    const companyKey = normalizeName(row.companyName)
+    const companyId = companyByName.get(companyKey)?.id ?? companyResolutions.get(companyKey) ?? null
+    if (row.companyName && !companyByName.has(companyKey)) {
       unresolvedCompanies.add(row.companyName)
     }
-    if (row.serviceName && !serviceByName.has(normalizeName(row.serviceName))) {
-      unresolvedServices.add(row.serviceName)
+    // Until the company is known there's nothing to match services against;
+    // the preview asks for the company first.
+    if (companyId && row.serviceName) {
+      const inCompany = (serviceByName.get(normalizeName(row.serviceName)) ?? []).some((s) => s.comp_id === companyId)
+      if (!inCompany) unresolvedServices.add(row.serviceName)
     }
-    // Owner (Reseller) and Collector matching failures don't block import.
-    // Owner is auto-created by name inside the RPC (low-stakes, just a
-    // label); Collector falls back to leaving the subscriber's existing
-    // collector untouched, same as a blank Collector column.
+    // Owner (Reseller) matching failures don't block import -- owners are
+    // auto-created by name inside the RPC. Collectors aren't created, and an
+    // unmatched one leaves the subscriber's collector untouched, so they're
+    // reported (not blocking) instead of silently ignored.
+    if (row.collectorName && !collectorByName.has(normalizeName(row.collectorName))) {
+      unmatchedCollectors.add(row.collectorName)
+    }
   }
 
   return {
@@ -306,7 +372,59 @@ export function matchRows(rows: ParsedRow[], ref: ImportReferenceData) {
     serviceByName,
     unresolvedCompanies: Array.from(unresolvedCompanies),
     unresolvedServices: Array.from(unresolvedServices),
+    unmatchedCollectors: Array.from(unmatchedCollectors),
   }
+}
+
+// Fields the app manages itself for an existing subscriber. A re-import
+// leaves them alone unless the admin ticks them (see 0032).
+export type ProtectedField = 'expiry' | 'status' | 'service' | 'price'
+
+export interface ImportOptions {
+  update_expiry: boolean
+  update_status: boolean
+  update_service: boolean
+  update_price: boolean
+}
+
+export interface ExistingRowChange {
+  row: ParsedRow
+  changes: { field: 'name' | 'phone' | ProtectedField; from: string; to: string }[]
+}
+
+// What importing would change on each existing subscriber, field by field
+// -- the same rules the RPC applies (blank never wipes, a 0 price is not a
+// price, phones compared after normalization).
+export function diffExistingRows(
+  rows: ParsedRow[],
+  ref: ImportReferenceData,
+  resolveServiceId: (row: ParsedRow) => string | null,
+): ExistingRowChange[] {
+  const serviceName = new Map(ref.services.map((s) => [s.id, s.name]))
+  const out: ExistingRowChange[] = []
+  for (const row of rows) {
+    const current = ref.existingByUsername.get(normalizeName(row.externalUsername))
+    if (!current) continue
+    const changes: ExistingRowChange['changes'] = []
+    if (row.name && row.name !== current.name) changes.push({ field: 'name', from: current.name, to: row.name })
+    const phone = normalizePhone(row.phone)
+    if (phone && phone !== current.phone) changes.push({ field: 'phone', from: current.phone ?? '—', to: phone })
+    if (row.expiryDate && row.expiryDate !== current.expiry_date)
+      changes.push({ field: 'expiry', from: current.expiry_date ?? '—', to: row.expiryDate })
+    if (row.connectionStatus !== current.connection_status)
+      changes.push({ field: 'status', from: current.connection_status, to: row.connectionStatus })
+    const serviceId = resolveServiceId(row)
+    if (serviceId && serviceId !== current.service_id)
+      changes.push({
+        field: 'service',
+        from: (current.service_id && serviceName.get(current.service_id)) || '—',
+        to: serviceName.get(serviceId) ?? row.serviceName,
+      })
+    if (row.price && row.price > 0 && row.price !== Number(current.price ?? 0))
+      changes.push({ field: 'price', from: current.price ? String(current.price) : '—', to: String(row.price) })
+    if (changes.length > 0) out.push({ row, changes })
+  }
+  return out
 }
 
 // --- Step 4: build the RPC payload once every row is resolvable -----------
@@ -327,15 +445,14 @@ function resolveCompanyIdForRow(row: ParsedRow, ctx: ServiceResolutionContext): 
   )
 }
 
-function resolveServiceIdForRow(row: ParsedRow, ctx: ServiceResolutionContext): string | null {
+// Only a service belonging to this row's company counts as a match;
+// otherwise the admin's explicit mapping (itself limited to that company's
+// services in the preview) is used, or nothing.
+export function resolveServiceIdForRow(row: ParsedRow, ctx: ServiceResolutionContext): string | null {
   const serviceKey = normalizeName(row.serviceName)
-  const candidates = ctx.serviceByName.get(serviceKey) ?? []
-  if (candidates.length === 1) return candidates[0].id
-  if (candidates.length > 1) {
-    const companyId = resolveCompanyIdForRow(row, ctx)
-    return candidates.find((c) => c.comp_id === companyId)?.id ?? candidates[0].id
-  }
-  return ctx.serviceOverrides.get(serviceKey) ?? null
+  const companyId = resolveCompanyIdForRow(row, ctx)
+  const match = (ctx.serviceByName.get(serviceKey) ?? []).find((c) => c.comp_id === companyId)
+  return match?.id ?? ctx.serviceOverrides.get(serviceKey) ?? null
 }
 
 export function buildBatchRows(rows: ParsedRow[], ctx: ServiceResolutionContext): ImportBatchRow[] {
@@ -388,6 +505,7 @@ export async function importSubscribersBatch(
   staffId: string | null,
   rowsTotal: number,
   skipped: { row: number; username: string; reason: string }[],
+  options: ImportOptions,
 ): Promise<ImportResult> {
   const { data, error } = await supabase.rpc('import_subscribers_batch', {
     p_rows: rows,
@@ -395,6 +513,7 @@ export async function importSubscribersBatch(
     p_filename: filename,
     p_rows_total: rowsTotal,
     p_skipped: skipped,
+    p_options: options,
   })
   if (error) throw error
   return data as ImportResult

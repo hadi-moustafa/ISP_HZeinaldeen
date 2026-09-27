@@ -11,12 +11,39 @@ export function currentPeriodMonth() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
 }
 
+// One status rule for every screen (subscriber list, dashboard search,
+// Dabdabeh, invoices):
+//   overdue   red     owes money whose due date has passed
+//                     (subscribers.debt, kept by the DB -- see 0030)
+//   partial   orange  some of this month's bill paid
+//   postponed orange  this month's bill pushed to a later date
+//   paid      green   this month's bill paid (or forgiven)
+//   due       grey    billed this month, not paid yet, not late yet
+//   none      grey    no bill this month
+// A partial payment reads orange even when late -- "some money's come in"
+// is kept distinct from "paid nothing" (client's earlier explicit ask).
+export type BillingKey = 'overdue' | 'partial' | 'postponed' | 'paid' | 'due' | 'none'
+
+export function billingKeyFor(log: MonthlyLogRow | undefined, debt: number): BillingKey {
+  if (log?.status === 'partial') return 'partial'
+  if (debt > 0) return 'overdue'
+  if (!log) return 'none'
+  if (log.status === 'paid' || log.status === 'waived') return 'paid'
+  if (log.status === 'postponed') return 'postponed'
+  return 'due'
+}
+
+const DOT_COLORS: Record<BillingKey, string> = {
+  overdue: 'bg-red-500',
+  partial: 'bg-orange-500',
+  postponed: 'bg-orange-500',
+  paid: 'bg-emerald-500',
+  due: 'bg-neutral-300',
+  none: 'bg-neutral-300',
+}
+
 export function statusDotColor(log: MonthlyLogRow | undefined, debt: number): string {
-  if (log?.status === 'partial') return 'bg-orange-500'
-  if (debt > 0) return 'bg-red-500'
-  if (log?.status === 'paid' || log?.status === 'waived') return 'bg-emerald-500'
-  if (log?.status === 'postponed') return 'bg-orange-500'
-  return 'bg-neutral-300'
+  return DOT_COLORS[billingKeyFor(log, debt)]
 }
 
 // Expiry is shown (and sorted) as day-of-month only -- billing is anchored

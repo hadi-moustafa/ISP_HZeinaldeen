@@ -95,54 +95,10 @@ export async function postponeInvoice(
   if (error) throw error
 }
 
-// "Mark as debt" flow: doubles what the subscriber owes for next month as a
-// late-payment penalty, per explicit client instruction. Never touches the
-// current invoice (already unpaid/red on its own) -- only next period's.
-// If next month's invoice already exists (e.g. from the monthly cron) and
-// isn't paid yet, its amount is raised to double; if it doesn't exist yet,
-// it's created early. Once that doubled invoice is paid, the month after
-// reverts to the normal price automatically -- nothing here changes the
-// service's price, just this one invoice row.
-export async function doubleNextMonthInvoice(
-  subscriberId: string,
-  serviceId: string,
-  nextPeriodMonth: string,
-  doubledAmount: number,
-) {
-  const { data: existing, error: findError } = await supabase
-    .from('invoices')
-    .select('id, status')
-    .eq('subscriber_id', subscriberId)
-    .eq('period_month', nextPeriodMonth)
-    .maybeSingle()
-  if (findError) throw findError
-
-  if (existing) {
-    if (existing.status === 'paid') return
-    const { error } = await supabase
-      .from('invoices')
-      .update({ amount_due: doubledAmount })
-      .eq('id', existing.id)
-    if (error) throw error
-  } else {
-    const { error } = await supabase.from('invoices').insert({
-      subscriber_id: subscriberId,
-      service_id: serviceId,
-      period_month: nextPeriodMonth,
-      amount_due: doubledAmount,
-      status: 'unpaid',
-    })
-    if (error) throw error
-  }
-}
-
-// Single source of truth for what a subscriber owes a given period --
-// their custom price override if set, else the service's sell_price, plus
-// one period's carried-forward shortfall if the immediately preceding
-// period was left unpaid/partial (see 0016_billing_engine.sql for the
-// exact rule). The generate-monthly-invoices Edge Function calls the same
-// Postgres function directly, so cron-generated and on-demand invoices are
-// never computed differently.
+// What a new invoice for this subscriber+period would be: their price
+// (custom override if > 0, else the service's sell_price) plus everything
+// still open from earlier months (see compute_invoice_amount, 0030) --
+// exactly what create_period_invoice will bill.
 export async function computeInvoiceAmount(subscriberId: string, periodMonth: string) {
   const { data, error } = await supabase.rpc('compute_invoice_amount', {
     p_subscriber_id: subscriberId,
@@ -153,16 +109,9 @@ export async function computeInvoiceAmount(subscriberId: string, periodMonth: st
 }
 
 // Bills a subscriber for a period on demand (a newly-created subscriber's
-// first bill, or the subscriber list's Pay button finding no invoice yet)
-// rather than leaving them with no invoice -- and no working Pay button --
-// until the next monthly cron run. Goes through create_period_invoice()
-// (0017_billing_engine_fix.sql), the same atomic function the cron Edge
-// Function calls, so both compute amount_due (custom price + one period's
-// carried-forward shortfall) and close out the invoice that shortfall came
-// from identically -- never two different implementations that could
-// drift apart. Safe to call when an invoice already exists for that
-// period: the function's own ON CONFLICT DO NOTHING makes it a no-op,
-// same as a cron re-run today.
+// first bill, or Pay finding no invoice yet) through create_period_invoice
+// (0030) -- the same function the nightly generation run uses. Returns
+// null, touching nothing, if that period already has an invoice.
 export async function createPeriodInvoice(subscriberId: string, serviceId: string, periodMonth: string) {
   const { data, error } = await supabase.rpc('create_period_invoice', {
     p_subscriber_id: subscriberId,
@@ -173,11 +122,11 @@ export async function createPeriodInvoice(subscriberId: string, serviceId: strin
   return data as string | null
 }
 
-// Pays down a subscriber's existing debt FIFO across their oldest
-// unpaid/partial invoices first (see pay_subscriber_debt_fifo in
-// 0022_pay_modal_engine.sql for the atomic per-invoice split). Returns the
-// amount actually applied -- less than the entered amount means the
-// subscriber's real debt was smaller than what was entered.
+// Pays down a subscriber's older open invoices (unpaid, partial or
+// postponed), oldest first (see pay_subscriber_debt_fifo, 0030). With
+// beforePeriod set, only months before it are touched -- the Pay modal
+// passes the current month so its Debt line never pays this month's bill.
+// Returns the amount actually applied.
 export async function payDebtFifo(input: {
   subscriberId: string
   amount: number
@@ -186,6 +135,7 @@ export async function payDebtFifo(input: {
   note: string | null
   collectorId: string | null
   staffId: string | null
+  beforePeriod: string | null
 }) {
   const { data, error } = await supabase.rpc('pay_subscriber_debt_fifo', {
     p_subscriber_id: input.subscriberId,
@@ -195,56 +145,91 @@ export async function payDebtFifo(input: {
     p_note: input.note,
     p_collector_id: input.collectorId,
     p_staff_id: input.staffId,
+    p_before_period: input.beforePeriod,
   })
   if (error) throw error
   return data as number
 }
 
-// "Deduct the overpaid excess from next month's bill" -- find-or-creates
-// next period's invoice (same baseline compute_invoice_amount/
-// create_period_invoice already use) then subtracts the credit, clamped
-// at 0. See apply_next_period_credit in 0022_pay_modal_engine.sql.
-export async function applyNextPeriodCredit(
-  subscriberId: string,
-  serviceId: string,
-  nextPeriodMonth: string,
-  creditAmount: number,
-) {
-  const { error } = await supabase.rpc('apply_next_period_credit', {
-    p_subscriber_id: subscriberId,
-    p_service_id: serviceId,
-    p_next_period_month: nextPeriodMonth,
-    p_credit_amount: creditAmount,
+// Bills every active subscriber with a service who has no invoice for the
+// current month yet (Beirut time). Same generate_period_invoices() the
+// nightly billing-daily cron job runs, so a manual run and the cron can
+// never compute anything differently; safe to re-run any time.
+export async function generateMonthlyInvoices() {
+  const { data, error } = await supabase.rpc('generate_period_invoices', { p_period_month: null, p_source: 'manual' })
+  if (error) throw error
+  return data as { periodMonth: string; created: number; skipped: number; failed: number; errors: { subscriber: string; error: string }[] }
+}
+
+export interface InvoiceGenerationRun {
+  period_month: string
+  source: string
+  created: number
+  skipped: number
+  failed: number
+  ran_at: string
+}
+
+export async function getLatestGenerationRun() {
+  const { data, error } = await supabase
+    .from('invoice_generation_runs')
+    .select('period_month, source, created, skipped, failed, ran_at')
+    .order('ran_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return data as InvoiceGenerationRun | null
+}
+
+// The Pay modal's whole Service line in one transaction (see
+// pay_service_line in 0030_billing_integrity.sql): bills this month if
+// needed, records the payment, and then -- depending on the choice --
+// forgives the rest (msama7), records an overpayment as an advance payment
+// on next month's invoice (rollover), or makes the amount the subscriber's
+// new permanent price. A failure anywhere leaves nothing half-done.
+export type ServiceLineChoice = 'rollover' | 'msama7' | 'skip' | null
+
+export async function payServiceLine(input: {
+  subscriberId: string
+  amount: number
+  choice: ServiceLineChoice
+  newPrice: boolean
+  paymentDate: string
+  method: string
+  note: string | null
+  collectorId: string | null
+  staffId: string | null
+}) {
+  const { data, error } = await supabase.rpc('pay_service_line', {
+    p_subscriber_id: input.subscriberId,
+    p_amount: input.amount,
+    p_choice: input.choice,
+    p_new_price: input.newPrice,
+    p_payment_date: input.paymentDate,
+    p_method: input.method,
+    p_note: input.note,
+    p_collector_id: input.collectorId,
+    p_staff_id: input.staffId,
   })
   if (error) throw error
+  return data as { invoiceId: string; applied: number; advance?: number; skipped: boolean }
 }
 
-// "Msama7" -- forgive an invoice's remaining shortfall instead of letting
-// it roll into next period. sync_invoice_status() already skips
-// recomputing any invoice already status='waived' (0001_init.sql), so
-// this one update is enough to stop compute_invoice_amount/
-// create_period_invoice from ever treating it as still-owed.
-export async function waiveInvoice(invoiceId: string) {
-  const { error } = await supabase.from('invoices').update({ status: 'waived' }).eq('id', invoiceId)
+// Open balance on invoices from months before this one -- what the Pay
+// modal's Debt line is for. This month's invoice is the Service line's job,
+// so it's never included here (the two lines can't show the same money).
+export async function getPriorPeriodsBalance(subscriberId: string, periodMonth: string) {
+  const { data, error } = await supabase
+    .from('monthly_log')
+    .select('amount_due, amount_paid, status')
+    .eq('subscriber_id', subscriberId)
+    .lt('period_month', periodMonth)
+    .in('status', ['unpaid', 'partial', 'postponed'])
   if (error) throw error
-}
-
-// Re-bases an invoice's amount_due to a new figure -- used when the Pay
-// modal's "new permanent price" toggle is on: the entered amount IS this
-// period's real bill from now on, not a short payment against the old
-// price, so there's nothing left over to become debt or roll into next
-// month. sync_invoice_status() (fired by the payment insert that follows)
-// derives status from payments-vs-amount_due, so paying the new amount_due
-// in full lands on 'paid' automatically.
-export async function setInvoiceAmountDue(invoiceId: string, amountDue: number) {
-  const { error } = await supabase.from('invoices').update({ amount_due: amountDue }).eq('id', invoiceId)
-  if (error) throw error
-}
-
-export async function generateMonthlyInvoices() {
-  const { data, error } = await supabase.functions.invoke('generate-monthly-invoices')
-  if (error) throw error
-  return data
+  return (data as { amount_due: number; amount_paid: number }[]).reduce(
+    (sum, r) => sum + Math.max(r.amount_due - r.amount_paid, 0),
+    0,
+  )
 }
 
 // Public/unauthenticated lookup for the shareable receipt page. Safe under

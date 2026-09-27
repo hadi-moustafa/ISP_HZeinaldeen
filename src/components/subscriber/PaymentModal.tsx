@@ -1,13 +1,11 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
-  createPayment,
   postponeInvoice,
   createPeriodInvoice,
   computeInvoiceAmount,
   payDebtFifo,
-  applyNextPeriodCredit,
-  waiveInvoice,
-  setInvoiceAmountDue,
+  payServiceLine,
+  getPriorPeriodsBalance,
 } from '../../lib/api/invoices'
 import {
   listOpenSaleMovementsForSubscriber,
@@ -34,13 +32,6 @@ import type { Collector, ServiceWithCompany, Product } from '../../types/referen
 function currentPeriodMonth() {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-}
-
-function nextPeriodMonth(period: string) {
-  const [y, m] = period.split('-').map(Number)
-  const nextM = m === 12 ? 1 : m + 1
-  const nextY = m === 12 ? y + 1 : y
-  return `${nextY}-${String(nextM).padStart(2, '0')}-01`
 }
 
 function todayLocal() {
@@ -169,7 +160,13 @@ export function PaymentModal({
     setPhoneDraft(subscriber.phone ?? '')
     setNewProductLines([])
     setProductsTouched(false)
-    setDebtAmount(subscriber.debt ? String(round2(subscriber.debt)) : '')
+    // Debt line = only months before this one; this month's bill (with
+    // anything carried into it) is the Service line's, so the two never
+    // pre-fill the same money.
+    setDebtAmount('')
+    getPriorPeriodsBalance(subscriber.id, currentPeriodMonth())
+      .then((balance) => setDebtAmount(balance > 0 ? String(round2(balance)) : ''))
+      .catch(() => {})
 
     const service = subscriber.service_id ? services.find((s) => s.id === subscriber.service_id) : undefined
     const estimate = round2(
@@ -347,6 +344,7 @@ export function PaymentModal({
             note: notes || null,
             collectorId: collectorId || null,
             staffId: staff?.id ?? null,
+            beforePeriod: currentPeriodMonth(),
           })
           logActivity(
             staff?.id ?? null,
@@ -395,79 +393,35 @@ export function PaymentModal({
     }
   }
 
+  // One transaction server-side (pay_service_line, 0030): bills this month
+  // if needed, records the payment, then forgives the rest (msama7),
+  // records an overpayment as an advance on next month's bill (rollover),
+  // or sets the amount as the new permanent price -- never half-done.
   async function processServiceLine(sub: SubscriberWithRelations) {
-    if (!sub.service_id) throw new Error('This subscriber has no service assigned to bill against.')
-    const period = currentPeriodMonth()
-    const invoiceId = await createPeriodInvoice(sub.id, sub.service_id, period)
-    let realInvoiceId = invoiceId
-    if (!realInvoiceId) {
-      const rows = await listMonthlyLog(period)
-      realInvoiceId = rows.find((r) => r.subscriber_id === sub.id)?.invoice_id ?? null
-    }
-    if (!realInvoiceId) throw new Error('Could not resolve this period\'s invoice')
-
     const entered = round2(Number(serviceAmount) || 0)
+    const result = await payServiceLine({
+      subscriberId: sub.id,
+      amount: entered,
+      choice: servicePriceToggle ? null : (flagChoices.service ?? null),
+      newPrice: servicePriceToggle,
+      paymentDate: date,
+      method,
+      note: notes || null,
+      collectorId: collectorId || null,
+      staffId: staff?.id ?? null,
+    })
+    if (result.skipped) return
 
-    if (servicePriceToggle) {
-      // The entered amount becomes this period's whole bill, full stop --
-      // no comparison against the old price, no shortfall, no debt, no
-      // rollover to next month. Re-base amount_due first so paying
-      // `entered` in full lands the invoice on 'paid', not 'partial'.
-      await setInvoiceAmountDue(realInvoiceId, entered)
-      if (entered > 0) {
-        await createPayment({
-          invoice_id: realInvoiceId,
-          subscriber_id: sub.id,
-          collector_id: collectorId || null,
-          amount: entered,
-          payment_date: date,
-          method,
-          note: notes || null,
-          staff_id: staff?.id ?? null,
-        })
-      }
-      await updateSubscriberFields(sub.id, { price: entered })
-      logActivity(
-        staff?.id ?? null,
-        `${staff?.username ?? 'Someone'} logged a service payment of ${entered} for subscriber ${sub.name} and set it as their permanent price`,
-        'payment',
-        sub.id,
-      )
-      return
-    }
-
-    const choice = flagChoices.service
-    const capped = Math.min(entered, serviceExpected)
-
-    if (entered > serviceExpected && choice === 'skip') {
-      // Overpay declined -- don't process this line at all.
-      return
-    }
-
-    if (capped > 0) {
-      await createPayment({
-        invoice_id: realInvoiceId,
-        subscriber_id: sub.id,
-        collector_id: collectorId || null,
-        amount: capped,
-        payment_date: date,
-        method,
-        note: notes || null,
-        staff_id: staff?.id ?? null,
-      })
-    }
-
-    if (entered < serviceExpected && choice === 'msama7') {
-      await waiveInvoice(realInvoiceId)
-    } else if (entered > serviceExpected && choice === 'rollover') {
-      const excess = round2(entered - serviceExpected)
-      const nextPeriod = nextPeriodMonth(period)
-      await applyNextPeriodCredit(sub.id, sub.service_id, nextPeriod, excess)
-    }
-
+    const detail = servicePriceToggle
+      ? ' and set it as their permanent price'
+      : result.advance
+        ? ` (${result.advance} of it paid in advance on next month's bill)`
+        : flagChoices.service === 'msama7' && entered < serviceExpected
+          ? ` and forgave the remaining ${round2(serviceExpected - entered)}`
+          : ''
     logActivity(
       staff?.id ?? null,
-      `${staff?.username ?? 'Someone'} logged a service payment of ${entered} for subscriber ${sub.name}`,
+      `${staff?.username ?? 'Someone'} logged a service payment of ${entered} for subscriber ${sub.name}${detail}`,
       'payment',
       sub.id,
     )
@@ -595,7 +549,7 @@ export function PaymentModal({
                           flagChoices[f.line] === 'rollover' ? 'bg-blue-500 text-white' : 'bg-white text-neutral-700'
                         }`}
                       >
-                        Deduct excess from next month
+                        {f.line === 'service' ? 'Count excess toward next month' : 'Deduct excess from next month'}
                       </button>
                       <button
                         type="button"

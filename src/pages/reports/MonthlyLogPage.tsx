@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { invoiceStatusLabel } from '../../types/invoices'
 import { listMonthlyLog, listMonthlyFinancials } from '../../lib/api/reports'
 import { listCompanies } from '../../lib/api/companies'
 import { listServices } from '../../lib/api/services'
@@ -195,7 +196,7 @@ export function MonthlyLogPage() {
           <option value="partial">Partial</option>
           <option value="paid">Paid</option>
           <option value="postponed">Postponed</option>
-          <option value="waived">Waived</option>
+          <option value="waived">Forgiven / moved to next month</option>
         </select>
         <div className="flex gap-2">
           <select
@@ -253,7 +254,7 @@ export function MonthlyLogPage() {
               <span
                 className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${statusBadgeClass[row.status]}`}
               >
-                {row.status}
+                {invoiceStatusLabel(row.status, row.waive_reason)}
               </span>
             </div>
           </div>

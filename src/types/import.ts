@@ -46,6 +46,7 @@ export type ColumnMapping = Record<string, CanonicalHeader | ''>
 
 export type RowIssue =
   | { type: 'missing_username' }
+  | { type: 'missing_name' }
   | { type: 'duplicate_username' }
   // Fires on every row at once, not per-row -- the sheet's own tab title
   // has to be non-blank since it's the only source of the company name now.

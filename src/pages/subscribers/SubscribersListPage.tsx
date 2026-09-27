@@ -26,26 +26,9 @@ import { useStaff } from '../../context/StaffContext'
 import { HeaderActions } from '../../components/AppHeader'
 import { PaymentModal } from '../../components/subscriber/PaymentModal'
 import { SubscriberRow } from '../../components/subscriber/SubscriberRow'
-import { currentPeriodMonth, compareByExpiryDay, quickPostpone } from '../../lib/subscriberRowHelpers'
+import { currentPeriodMonth, compareByExpiryDay, quickPostpone, billingKeyFor } from '../../lib/subscriberRowHelpers'
 import { exportToExcel } from '../../lib/exportExcel'
 import { useLocalStorageState } from '../../lib/useLocalStorageState'
-
-type BillingKey = 'paid' | 'debt' | 'postponed' | 'partial' | 'none'
-
-// debt (subscribers.debt, live-synced by DB triggers) is the authoritative
-// signal for red -- it also catches debt carried from a prior period that
-// this period's own invoice status wouldn't show on its own. A partial
-// payment on the current period's invoice is checked first, though, so
-// "some money's already come in this month" reads orange rather than the
-// same red as a subscriber who's paid nothing at all.
-function billingKeyFor(status: string | undefined, debt: number): BillingKey {
-  if (status === 'partial') return 'partial'
-  if (debt > 0) return 'debt'
-  if (!status) return 'none'
-  if (status === 'paid' || status === 'waived') return 'paid'
-  if (status === 'postponed') return 'postponed'
-  return 'debt' // unpaid
-}
 
 // Superset of the API's SubscriberSearchField: the free-text modes (name/id/
 // owner/username) map straight through to the API's search+searchField
@@ -310,7 +293,7 @@ export function SubscribersListPage() {
       billingFilter === 'any'
         ? subscribers
         : subscribers.filter((s) => {
-            const paid = billingKeyFor(monthlyLogBySubscriber[s.id]?.status, s.debt) === 'paid'
+            const paid = billingKeyFor(monthlyLogBySubscriber[s.id], s.debt) === 'paid'
             return billingFilter === 'paid' ? paid : !paid
           })
     const sorted = [...billingFiltered].sort(compareByExpiryDay)

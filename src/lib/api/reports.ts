@@ -1,17 +1,17 @@
 import { supabase } from '../supabase'
-import { listDebtSubscriberIds, listSubscribersByExpiryRange, listSubscribersByExpiryBefore } from './subscribers'
-import { listCompanyDues } from './companyPayments'
+import { fetchAllRows } from './fetchAll'
 import type { MonthlyFinancialRow, MonthlyLogRow } from '../../types/reports'
-import type { SubscriberWithRelations } from '../../types/subscribers'
 
 export async function listMonthlyLog(periodMonth: string) {
-  const { data, error } = await supabase
-    .from('monthly_log')
-    .select('*')
-    .eq('period_month', periodMonth)
-    .order('subscriber_name')
-  if (error) throw error
-  return data as MonthlyLogRow[]
+  return fetchAllRows<MonthlyLogRow>((from, to) =>
+    supabase
+      .from('monthly_log')
+      .select('*')
+      .eq('period_month', periodMonth)
+      .order('subscriber_name')
+      .order('invoice_id')
+      .range(from, to),
+  )
 }
 
 export async function listMonthlyFinancials() {
@@ -23,113 +23,62 @@ export async function listMonthlyFinancials() {
   return data as MonthlyFinancialRow[]
 }
 
+// Headline numbers for the dashboard, computed in one place server-side
+// (dashboard_summary(), 0031_company_schedule_and_dashboard.sql) from real
+// invoices. Two different questions, kept apart on purpose:
+//   period*  this month's bills -- due (invoices, plus what an invoice
+//            would be for anyone not billed yet), paid against them,
+//            forgiven, and left
+//   cash*    money actually received this month, by date, whatever it
+//            paid for (old debt and advance payments included)
 export interface DashboardSummary {
+  periodMonth: string
   totalSubscribers: number
-  totalDue: number
-  totalPaid: number
-  totalLeft: number
-  totalLeftProducts: number
-  totalDebtSubscribers: number
+  billableSubscribers: number
+  unbilledSubscribers: number
+  periodDue: number
+  periodPaid: number
+  periodForgiven: number
+  periodLeft: number
   paidUsers: number
   unpaidUsers: number
-  totalSoldProducts: number
-  totalPaymentsProducts: number
-  totalPaymentsCollected: number
+  overdueSubscribers: number
+  overdueAmount: number
+  productUnits: number
+  productTotal: number
+  productPaid: number
+  productLeft: number
+  cashSubscribers: number
+  cashProducts: number
+  companyPaidMonthAll: number
 }
 
-// totalDue is the total sell price across every active subscriber with a
-// service assigned -- what should be collected this month if everyone
-// paid -- not the sum of invoices actually generated so far (a
-// mid-month-created subscriber with no invoice yet still counts). Matches
-// invoice generation's own active-only, has-a-service scoping elsewhere in
-// the app. totalPaid still comes from monthly_log (this month's actual
-// collections). totalDebtSubscribers reuses listDebtSubscriberIds() (any
-// unpaid/partial invoice, any period) so "in debt" means the same thing
-// here as it does on the subscriber list's Debt filter chip.
-//
-// paidUsers is counted among subscribers that already have a monthly_log
-// row this period -- paid/waived count as paid, same split billingKeyFor()
-// uses on the subscriber list. unpaidUsers is everyone else (total
-// subscribers minus paid), explicit client definition -- so it also
-// captures subscribers not yet billed this period, not just
-// unpaid/partial/postponed invoice rows.
-//
-// totalSoldProducts/totalPaymentsProducts/totalLeftProducts only look at
-// this month's 'sale' movements. Movements marked payment_status='partial'
-// are excluded from both totalPaymentsProducts and totalLeftProducts (but
-// still counted in totalSoldProducts) since product_movements only has a
-// paid/unpaid/partial flag, not an amount-collected ledger like subscriber
-// payments -- there's no way to know how much of a partial sale was
-// actually collected, or how much of it is still owed. Known limitation,
-// not solved here.
-export async function getDashboardSummary(periodMonth: string): Promise<DashboardSummary> {
-  const monthStart = periodMonth.slice(0, 8) + '01'
-  const nextMonthStart = (() => {
-    const d = new Date(monthStart + 'T00:00:00Z')
-    d.setUTCMonth(d.getUTCMonth() + 1)
-    return d.toISOString().slice(0, 10)
-  })()
-
-  const [countRes, expectedRes, logRows, debtIds, saleMovementsRes] = await Promise.all([
-    supabase.from('subscribers').select('id', { count: 'exact', head: true }),
-    supabase
-      .from('subscribers')
-      .select('services(sell_price)')
-      .eq('connection_status', 'active')
-      .not('service_id', 'is', null),
-    listMonthlyLog(periodMonth),
-    listDebtSubscriberIds(),
-    supabase
-      .from('product_movements')
-      .select('quantity, unit_price, payment_status')
-      .eq('movement_type', 'sale')
-      .gte('movement_date', monthStart)
-      .lt('movement_date', nextMonthStart),
-  ])
-  if (countRes.error) throw countRes.error
-  if (expectedRes.error) throw expectedRes.error
-  if (saleMovementsRes.error) throw saleMovementsRes.error
-
-  const expectedRows = expectedRes.data as unknown as { services: { sell_price: number } | null }[]
-  const totalDue = expectedRows.reduce((sum, r) => sum + (r.services?.sell_price ?? 0), 0)
-  const totalPaid = logRows.reduce((sum, r) => sum + r.amount_paid, 0)
-
-  const paidUsers = logRows.filter((r) => r.status === 'paid' || r.status === 'waived').length
-  const unpaidUsers = (countRes.count ?? 0) - paidUsers
-
-  const saleMovements = saleMovementsRes.data as unknown as {
-    quantity: number
-    unit_price: number
-    payment_status: string
-  }[]
-  const totalSoldProducts = saleMovements.reduce((sum, m) => sum + Math.abs(m.quantity), 0)
-  const totalPaymentsProducts = saleMovements
-    .filter((m) => m.payment_status === 'paid')
-    .reduce((sum, m) => sum + Math.abs(m.quantity) * m.unit_price, 0)
-  const totalLeftProducts = saleMovements
-    .filter((m) => m.payment_status === 'unpaid')
-    .reduce((sum, m) => sum + Math.abs(m.quantity) * m.unit_price, 0)
-
+export async function getDashboardSummary(): Promise<DashboardSummary> {
+  const { data, error } = await supabase.rpc('dashboard_summary')
+  if (error) throw error
+  const raw = data as Record<string, unknown>
+  const num = (k: string) => Number(raw[k] ?? 0)
   return {
-    totalSubscribers: countRes.count ?? 0,
-    totalDue,
-    totalPaid,
-    totalLeft: Math.max(totalDue - totalPaid, 0),
-    totalLeftProducts,
-    totalDebtSubscribers: debtIds.size,
-    paidUsers,
-    unpaidUsers,
-    totalSoldProducts,
-    totalPaymentsProducts,
-    totalPaymentsCollected: totalPaid + totalPaymentsProducts,
+    periodMonth: String(raw.periodMonth),
+    totalSubscribers: num('totalSubscribers'),
+    billableSubscribers: num('billableSubscribers'),
+    unbilledSubscribers: num('unbilledSubscribers'),
+    periodDue: num('periodDue'),
+    periodPaid: num('periodPaid'),
+    periodForgiven: num('periodForgiven'),
+    periodLeft: num('periodLeft'),
+    paidUsers: num('paidUsers'),
+    unpaidUsers: num('unpaidUsers'),
+    overdueSubscribers: num('overdueSubscribers'),
+    overdueAmount: num('overdueAmount'),
+    productUnits: num('productUnits'),
+    productTotal: num('productTotal'),
+    productPaid: num('productPaid'),
+    productLeft: num('productLeft'),
+    cashSubscribers: num('cashSubscribers'),
+    cashProducts: num('cashProducts'),
+    companyPaidMonthAll: num('companyPaidMonthAll'),
   }
-}
-
-export interface ExpiryBucket {
-  date: string
-  label: string
-  subscribers: SubscriberWithRelations[]
-  companyTotals: { companyName: string; amount: number; count: number }[]
 }
 
 function localDateString(offsetDays: number): string {
@@ -181,116 +130,50 @@ export async function getCollectionTodayTotal(): Promise<CollectionRangeTotal> {
   return { days: 1, count, amount }
 }
 
-// Cumulative windows, not exact-day snapshots -- "Today" covers today
-// only, "In 2 days" merges today + tomorrow, "In 5 days" covers today
-// through +5, each (after "Today") a running sum rather than just the
-// count landing on that one exact day. Single fetch (widest window)
-// drives both the "expiring soon, go collect" subscriber list and the
-// per-company "what we owe them" alert, grouping the same rows two
-// different ways.
-export async function getExpiryWatch(): Promise<ExpiryBucket[]> {
-  const windows = [
-    { toOffset: 0, label: 'Today' },
-    { toOffset: 1, label: 'In 2 days' },
-    { toOffset: 5, label: 'In 5 days' },
-  ]
-  const fromDate = localDateString(0)
-  const widestToDate = localDateString(windows[windows.length - 1].toOffset)
-  const rows = await listSubscribersByExpiryRange(fromDate, widestToDate)
-
-  return windows.map((w) => {
-    const toDate = localDateString(w.toOffset)
-    const subscribers = rows.filter(
-      (r) => r.expiry_date !== null && r.expiry_date >= fromDate && r.expiry_date <= toDate,
-    )
-    const byCompany = new Map<string, { amount: number; count: number }>()
-    for (const sub of subscribers) {
-      const companyName = sub.services?.companies?.name
-      if (!companyName) continue
-      const owed = sub.services?.paid_price ?? 0
-      const entry = byCompany.get(companyName) ?? { amount: 0, count: 0 }
-      entry.amount += owed
-      entry.count += 1
-      byCompany.set(companyName, entry)
-    }
-    return {
-      date: toDate,
-      label: w.label,
-      subscribers,
-      companyTotals: Array.from(byCompany.entries()).map(([companyName, v]) => ({ companyName, ...v })),
-    }
-  })
-}
-
-// Flat, admin-selectable-range list of subscribers expiring within [today,
-// today+days] -- feeds the "Expiring soon" list, independent of the fixed
-// Today/In-2-days/In-5-days urgency tiles above it.
-export async function getExpiringSubscribers(days: number): Promise<SubscriberWithRelations[]> {
-  const clampedDays = Math.min(Math.max(Math.trunc(days), 1), 30)
-  const fromDate = localDateString(0)
-  const toDate = localDateString(clampedDays)
-  const rows = await listSubscribersByExpiryRange(fromDate, toDate)
-  return [...rows].sort((a, b) => (a.expiry_date ?? '').localeCompare(b.expiry_date ?? ''))
-}
-
+// What the ISP owes each company, one definition for the dashboard and the
+// Company Analysis page (company_due_schedule(), 0031). Renewal dates come
+// from each subscriber's billing day, not their paid-until expiry, so a
+// subscriber paying early never hides what's owed to the company.
+//   owedMonth     paid_price x active subscribers (standing monthly amount)
+//   paidMonth     paid to the company this calendar month
+//   dueSoFar      renewals whose billing day this month already passed
+//   count/amount  renewals in [today, today + days]
+//   have          paidMonth - dueSoFar - amount (negative = still to pay)
 export interface CompanyDueRow {
+  compId: string
   companyName: string
+  countsInTotals: boolean
+  activeSubscribers: number
+  owedMonth: number
+  paidMonth: number
+  dueSoFar: number
   count: number
   amount: number
   have: number
 }
 
-// Per-company breakdown of what's owed for subscribers expiring within
-// [today, today+days] -- backs the "Company payments due" table, adaptive
-// to however many companies actually have subscribers in range and to any
-// admin-selected day range (not just the fixed 5-day window).
-//
-// "have" is the company's remaining cash cushion:
-//   total_paid (what's been paid to this company so far THIS MONTH --
-//   `company_dues.total_paid` resets automatically at each month
-//   boundary, see 0024_company_dues_paid_this_month.sql -- same figure
-//   shown on the Company Payments Analysis page) minus already-passed
-//   dues (active subscribers whose expiry_date is already behind us and
-//   need renewing -- computed from real subscriber rows) minus this
-//   row's near-term amount (today/tomorrow/the selected coming days --
-//   the same figure shown in the "Amount" column).
+export async function getCompanyDueSchedule(days: number): Promise<CompanyDueRow[]> {
+  const { data, error } = await supabase.rpc('company_due_schedule', { p_days: days })
+  if (error) throw error
+  return (data as Record<string, unknown>[]).map((r) => ({
+    compId: String(r.comp_id),
+    companyName: String(r.company_name),
+    countsInTotals: Boolean(r.counts_in_totals),
+    activeSubscribers: Number(r.active_subscribers),
+    owedMonth: Number(r.owed_month),
+    paidMonth: Number(r.paid_month),
+    dueSoFar: Number(r.due_so_far),
+    count: Number(r.window_count),
+    amount: Number(r.window_amount),
+    have: Number(r.have),
+  }))
+}
+
+// Companies with a renewal in the window, biggest first -- the dashboard's
+// "Company payments due" table.
 export async function getCompanyPaymentsDue(days: number): Promise<CompanyDueRow[]> {
-  const clampedDays = Math.min(Math.max(Math.trunc(days), 0), 30)
-  const fromDate = localDateString(0)
-  const toDate = localDateString(clampedDays)
-
-  const [selectedRows, passedRows, dues] = await Promise.all([
-    listSubscribersByExpiryRange(fromDate, toDate),
-    listSubscribersByExpiryBefore(fromDate),
-    listCompanyDues(),
-  ])
-  const totalPaidByName = new Map(dues.map((d) => [d.company_name, d.total_paid]))
-
-  const passedByName = new Map<string, number>()
-  for (const sub of passedRows) {
-    const companyName = sub.services?.companies?.name
-    if (!companyName) continue
-    passedByName.set(companyName, (passedByName.get(companyName) ?? 0) + (sub.services?.paid_price ?? 0))
-  }
-
-  const byCompany = new Map<string, { companyName: string; count: number; amount: number }>()
-  for (const sub of selectedRows) {
-    const companyName = sub.services?.companies?.name
-    if (!companyName) continue
-    const owed = sub.services?.paid_price ?? 0
-    const entry = byCompany.get(companyName) ?? { companyName, count: 0, amount: 0 }
-    entry.count += 1
-    entry.amount += owed
-    byCompany.set(companyName, entry)
-  }
-
-  return Array.from(byCompany.values())
-    .map((row) => {
-      const totalPaid = totalPaidByName.get(row.companyName) ?? 0
-      const passedAmount = passedByName.get(row.companyName) ?? 0
-      return { ...row, have: totalPaid - (passedAmount + row.amount) }
-    })
-    .sort((a, b) => b.amount - a.amount)
+  const rows = await getCompanyDueSchedule(days)
+  return rows.filter((r) => r.count > 0).sort((a, b) => b.amount - a.amount)
 }
 
 export interface CollectedSubscriber {

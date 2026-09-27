@@ -7,7 +7,7 @@ import {
   deletePayment,
   postponeInvoice,
 } from '../../lib/api/invoices'
-import type { Invoice, PaymentWithCollector } from '../../types/invoices'
+import { type Invoice, type PaymentWithCollector, invoiceStatusLabel } from '../../types/invoices'
 import type { Collector } from '../../types/reference'
 import { useStaff } from '../../context/StaffContext'
 import { logActivity } from '../../lib/api/activityLog'
@@ -331,7 +331,7 @@ export function InvoicesSection({
               <span
                 className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${statusBadgeClass[invoice.status]}`}
               >
-                {invoice.status}
+                {invoiceStatusLabel(invoice.status, invoice.waive_reason)}
               </span>
             </div>
 

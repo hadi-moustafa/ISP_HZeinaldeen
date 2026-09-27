@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { getInvoiceReceipt } from '../lib/api/invoices'
-import type { InvoiceReceipt, ReceiptPayment } from '../types/invoices'
+import { type InvoiceReceipt, type ReceiptPayment, invoiceStatusLabel } from '../types/invoices'
 import { cardClass } from '../lib/uiClasses'
 
 const statusBadgeClass: Record<string, string> = {
@@ -59,7 +59,7 @@ export function ReceiptPage() {
               <span
                 className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${statusBadgeClass[invoice.status]}`}
               >
-                {invoice.status}
+                {invoiceStatusLabel(invoice.status, invoice.waive_reason)}
               </span>
             </div>
 

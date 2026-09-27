@@ -1,18 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-import { listCompanyDues } from '../../lib/api/companyPayments'
-import type { CompanyDue } from '../../types/companyPayments'
+import { getCompanyDueSchedule, type CompanyDueRow } from '../../lib/api/reports'
 import { cardClass } from '../../lib/uiClasses'
 
 // "What does this company need from me" -- a read-only, at-a-glance
 // breakdown of what the ISP owes each reseller company vs. what's already
 // been paid, separate from the Company Payments page's payment-logging
-// workflow. Sourced from the same `company_dues` view (active subscribers'
-// services.paid_price, see companyPayments.ts) so the numbers here always
-// match what Company Payments shows -- this page is purely a different lens
-// on the same underlying totals. "Paid" is scoped to the current calendar
-// month on both ends (0029) and resets automatically when the month rolls
-// over -- no payment history is ever deleted, this view just stops summing
-// other months in.
+// workflow. Sourced from company_due_schedule() (0031), the same function
+// behind the dashboard's "Company payments due" table, so the two can never
+// disagree. Owed = the standing monthly amount (active subscribers'
+// services.paid_price); Paid = this calendar month (Beirut time); Due so
+// far = renewals whose billing day this month has already passed -- what
+// should already have been paid by today.
 //
 // The summary totals count only companies flagged counts_in_totals: an
 // expense account like "Hsen masrouf" has no services or subscribers, so
@@ -21,21 +19,21 @@ import { cardClass } from '../../lib/uiClasses'
 // Those companies still get a card here (marked so the arithmetic reads
 // correctly) and still accept payments on the Company Payments page.
 export function CompanyPaymentsAnalysisPage() {
-  const [dues, setDues] = useState<CompanyDue[]>([])
+  const [dues, setDues] = useState<CompanyDueRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    listCompanyDues()
+    getCompanyDueSchedule(0)
       .then(setDues)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load company dues'))
       .finally(() => setLoading(false))
   }, [])
 
   const totals = useMemo(() => {
-    const counted = dues.filter((d) => d.counts_in_totals)
-    const totalOwed = counted.reduce((sum, d) => sum + d.total_owed, 0)
-    const totalPaid = counted.reduce((sum, d) => sum + d.total_paid, 0)
+    const counted = dues.filter((d) => d.countsInTotals)
+    const totalOwed = counted.reduce((sum, d) => sum + d.owedMonth, 0)
+    const totalPaid = counted.reduce((sum, d) => sum + d.paidMonth, 0)
     return {
       totalOwed,
       totalPaid,
@@ -45,7 +43,7 @@ export function CompanyPaymentsAnalysisPage() {
   }, [dues])
 
   const sortedDues = useMemo(
-    () => [...dues].sort((a, b) => b.total_owed - b.total_paid - (a.total_owed - a.total_paid)),
+    () => [...dues].sort((a, b) => b.owedMonth - b.paidMonth - (a.owedMonth - a.paidMonth)),
     [dues],
   )
 
@@ -83,15 +81,16 @@ export function CompanyPaymentsAnalysisPage() {
 
       <div className="space-y-3">
         {sortedDues.map((due) => {
-          const balance = due.total_owed - due.total_paid
-          const pctPaid = due.total_owed > 0 ? Math.min(Math.max(due.total_paid / due.total_owed, 0), 1) : 1
+          const balance = due.owedMonth - due.paidMonth
+          const pctPaid = due.owedMonth > 0 ? Math.min(Math.max(due.paidMonth / due.owedMonth, 0), 1) : 1
           const settled = balance <= 0
+          const behind = Math.max(due.dueSoFar - due.paidMonth, 0)
           return (
-            <div key={due.comp_id} className={cardClass}>
+            <div key={due.compId} className={cardClass}>
               <div className="mb-2 flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">
-                  <p className="truncate font-semibold text-neutral-900">{due.company_name}</p>
-                  {!due.counts_in_totals && (
+                  <p className="truncate font-semibold text-neutral-900">{due.companyName}</p>
+                  {!due.countsInTotals && (
                     <span className="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500">
                       not in totals
                     </span>
@@ -110,13 +109,19 @@ export function CompanyPaymentsAnalysisPage() {
                 <div className="h-full rounded-full bg-emerald-500" style={{ width: `${pctPaid * 100}%` }} />
               </div>
 
+              {behind > 0 && (
+                <p className="mb-2 text-xs text-red-600">
+                  {behind.toFixed(2)} behind — renewals already due this month total {due.dueSoFar.toFixed(2)}.
+                </p>
+              )}
+
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="rounded-lg bg-neutral-50 px-2 py-2">
-                  <p className="text-sm font-semibold text-neutral-900">{due.total_owed.toFixed(2)}</p>
+                  <p className="text-sm font-semibold text-neutral-900">{due.owedMonth.toFixed(2)}</p>
                   <p className="text-[10px] uppercase tracking-wide text-neutral-400">Owed</p>
                 </div>
                 <div className="rounded-lg bg-neutral-50 px-2 py-2">
-                  <p className="text-sm font-semibold text-emerald-600">{due.total_paid.toFixed(2)}</p>
+                  <p className="text-sm font-semibold text-emerald-600">{due.paidMonth.toFixed(2)}</p>
                   <p className="text-[10px] uppercase tracking-wide text-neutral-400">Paid this month</p>
                 </div>
                 <div className="rounded-lg bg-neutral-50 px-2 py-2">

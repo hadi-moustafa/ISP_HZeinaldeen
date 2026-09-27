@@ -1,5 +1,16 @@
 export type InvoiceStatus = 'unpaid' | 'partial' | 'paid' | 'postponed' | 'waived'
 
+// Why an invoice is 'waived': forgiven (msama7) or rolled_over (its balance
+// moved into a later month's invoice). See 0030_billing_integrity.sql.
+export type WaiveReason = 'forgiven' | 'rolled_over'
+
+// What to call an invoice's status on screen -- 'waived' alone can't tell
+// forgiven money from money that's still owed on a later invoice.
+export function invoiceStatusLabel(status: InvoiceStatus | string, waiveReason?: WaiveReason | null): string {
+  if (status === 'waived') return waiveReason === 'rolled_over' ? 'moved to next month' : 'forgiven'
+  return status
+}
+
 export interface Invoice {
   id: string
   subscriber_id: string
@@ -9,6 +20,8 @@ export interface Invoice {
   due_date: string | null
   postponed_to: string | null
   status: InvoiceStatus
+  waive_reason: WaiveReason | null
+  forgiven_amount: number | null
   created_at: string
   updated_at: string
 }
@@ -37,6 +50,7 @@ export interface InvoiceReceipt {
   due_date: string | null
   postponed_to: string | null
   status: InvoiceStatus
+  waive_reason: WaiveReason | null
   subscribers: { name: string; phone: string | null } | null
   services: { name: string; companies: { name: string } | null } | null
 }

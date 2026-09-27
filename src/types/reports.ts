@@ -1,3 +1,5 @@
+import type { WaiveReason } from './invoices'
+
 export interface MonthlyLogRow {
   period_month: string
   subscriber_id: string
@@ -17,6 +19,8 @@ export interface MonthlyLogRow {
   company_name: string | null
   owner_id: string | null
   collector_id: string | null
+  waive_reason: WaiveReason | null
+  forgiven_amount: number | null
 }
 
 export interface MonthlyFinancialRow {

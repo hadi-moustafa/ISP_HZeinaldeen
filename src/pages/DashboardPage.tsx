@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useStaff } from '../context/StaffContext'
 import { isAdmin } from '../lib/permissions'
-import { generateMonthlyInvoices } from '../lib/api/invoices'
+import { generateMonthlyInvoices, getLatestGenerationRun, type InvoiceGenerationRun } from '../lib/api/invoices'
 import {
   getDashboardSummary,
   getCollectionTotal,
@@ -63,6 +63,7 @@ export function DashboardPage() {
 
   const [generating, setGenerating] = useState(false)
   const [generateResult, setGenerateResult] = useState<string | null>(null)
+  const [lastRun, setLastRun] = useState<InvoiceGenerationRun | null>(null)
 
   const [filters, setFilters] = useState(emptyFilters)
   const [filterField, setFilterField] = useState<FilterField>('name')
@@ -86,7 +87,7 @@ export function DashboardPage() {
   const [collectedTodayLoading, setCollectedTodayLoading] = useState(false)
 
   function refreshStats() {
-    getDashboardSummary(currentPeriodMonth())
+    getDashboardSummary()
       .then(setSummary)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load dashboard'))
     getCollectionTodayTotal()
@@ -99,6 +100,7 @@ export function DashboardPage() {
       .then(setCompanyDueRows)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load company payments due'))
     setCollectedTodayNames(null)
+    getLatestGenerationRun().then(setLastRun).catch(() => {})
     listMonthlyLog(currentPeriodMonth())
       .then((rows) => setMonthlyLogBySubscriber(Object.fromEntries(rows.map((row) => [row.subscriber_id, row]))))
       .catch(() => {})
@@ -217,7 +219,10 @@ export function DashboardPage() {
     setGenerateResult(null)
     try {
       const result = await generateMonthlyInvoices()
-      setGenerateResult(`Created ${result.created}, skipped ${result.skipped}.`)
+      setGenerateResult(
+        `Created ${result.created}, ${result.skipped} already billed` +
+          (result.failed > 0 ? `, ${result.failed} failed: ${result.errors.map((e) => `${e.subscriber} (${e.error})`).join('; ')}` : '.'),
+      )
       refreshStats()
     } catch (err) {
       setGenerateResult(err instanceof Error ? err.message : 'Failed to generate invoices')
@@ -446,59 +451,75 @@ export function DashboardPage() {
 
           {summary && (
             <>
-              {/* Hero: % collected ring + collected/left split */}
-              <div className={`${cardClass} mb-3 rounded-2xl`}>
-                <div className="mb-4 flex items-center gap-4">
-                  <div
-                    className="relative grid h-20 w-20 shrink-0 place-items-center rounded-full"
-                    style={{
-                      background: `conic-gradient(#059669 ${
-                        summary.totalDue > 0
-                          ? Math.min(100, (summary.totalPaymentsCollected / summary.totalDue) * 100)
-                          : 0
-                      }%, #f5f5f5 0)`,
-                    }}
-                  >
-                    <div className="absolute inset-[7px] rounded-full bg-white" />
-                    <p className="relative text-center text-sm font-extrabold text-neutral-900">
-                      {summary.totalDue > 0 ? Math.round((summary.totalPaymentsCollected / summary.totalDue) * 100) : 0}%
-                      <span className="block text-[8.5px] font-bold uppercase tracking-wide text-neutral-400">collected</span>
-                    </p>
+              {/* Hero: how much of this month's bills is paid. Money received
+                  this month by date (old debt, advance payments) is the
+                  separate "Collected" card further down. */}
+              {(() => {
+                const pct =
+                  summary.periodDue > 0
+                    ? Math.min(100, ((summary.periodPaid + summary.periodForgiven) / summary.periodDue) * 100)
+                    : 0
+                return (
+                  <div className={`${cardClass} mb-3 rounded-2xl`}>
+                    <div className="mb-4 flex items-center gap-4">
+                      <div
+                        className="relative grid h-20 w-20 shrink-0 place-items-center rounded-full"
+                        style={{ background: `conic-gradient(#059669 ${pct}%, #f5f5f5 0)` }}
+                      >
+                        <div className="absolute inset-[7px] rounded-full bg-white" />
+                        <p className="relative text-center text-sm font-extrabold text-neutral-900">
+                          {Math.round(pct)}%
+                          <span className="block text-[8.5px] font-bold uppercase tracking-wide text-neutral-400">
+                            settled
+                          </span>
+                        </p>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-2xl font-extrabold tracking-tight text-neutral-900 tabular-nums">
+                          {summary.periodDue.toFixed(0)}
+                          <span className="ml-1 text-sm font-semibold text-neutral-400">billed this month</span>
+                        </p>
+                        {summary.unbilledSubscribers > 0 && (
+                          <p className="text-[11px] text-neutral-500">
+                            incl. {summary.unbilledSubscribers} subscriber{summary.unbilledSubscribers > 1 ? 's' : ''} not
+                            billed yet
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div className="rounded-xl bg-emerald-50 px-3 py-2.5">
+                        <p className="text-base font-extrabold text-emerald-600 tabular-nums">
+                          {summary.periodPaid.toFixed(2)}
+                        </p>
+                        {summary.periodForgiven > 0 && (
+                          <p className="text-[10px] text-neutral-500 tabular-nums">
+                            + {summary.periodForgiven.toFixed(2)} forgiven
+                          </p>
+                        )}
+                        <p className="mt-1 text-[11px] font-medium text-neutral-500">Paid on this month's bills</p>
+                      </div>
+                      <div className="rounded-xl bg-rose-50 px-3 py-2.5">
+                        <p className="text-base font-extrabold text-rose-600 tabular-nums">
+                          {summary.periodLeft.toFixed(2)}
+                        </p>
+                        {summary.overdueSubscribers > 0 && (
+                          <p className="text-[10px] text-neutral-500 tabular-nums">
+                            {summary.overdueAmount.toFixed(2)} of it overdue
+                          </p>
+                        )}
+                        <p className="mt-1 text-[11px] font-medium text-neutral-500">Left to collect</p>
+                      </div>
+                    </div>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-2xl font-extrabold tracking-tight text-neutral-900 tabular-nums">
-                      {summary.totalDue.toFixed(0)}
-                      <span className="ml-1 text-sm font-semibold text-neutral-400">total this period</span>
-                    </p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div className="rounded-xl bg-emerald-50 px-3 py-2.5">
-                    <p className="text-base font-extrabold text-emerald-600 tabular-nums">
-                      {summary.totalPaymentsCollected.toFixed(2)}
-                    </p>
-                    <p className="text-[10px] text-neutral-500 tabular-nums">
-                      Svc {summary.totalPaid.toFixed(2)} · Prod {summary.totalPaymentsProducts.toFixed(2)}
-                    </p>
-                    <p className="mt-1 text-[11px] font-medium text-neutral-500">Collected</p>
-                  </div>
-                  <div className="rounded-xl bg-rose-50 px-3 py-2.5">
-                    <p className="text-base font-extrabold text-rose-600 tabular-nums">
-                      {(summary.totalLeft + summary.totalLeftProducts).toFixed(2)}
-                    </p>
-                    <p className="text-[10px] text-neutral-500 tabular-nums">
-                      Svc {summary.totalLeft.toFixed(2)} · Prod {summary.totalLeftProducts.toFixed(2)}
-                    </p>
-                    <p className="mt-1 text-[11px] font-medium text-neutral-500">Left to collect</p>
-                  </div>
-                </div>
-              </div>
+                )
+              })()}
 
-              {/* Subscribers / paid / unpaid, with progress bars */}
+              {/* Billed subscribers: paid / not paid yet / overdue */}
               <div className="mb-3 grid grid-cols-3 gap-2">
                 <div className={`${cardClass} rounded-2xl text-center`}>
-                  <p className="text-lg font-extrabold text-neutral-900 tabular-nums">{summary.totalSubscribers}</p>
-                  <p className="text-[10.5px] text-neutral-500">Subscribers</p>
+                  <p className="text-lg font-extrabold text-neutral-900 tabular-nums">{summary.billableSubscribers}</p>
+                  <p className="text-[10.5px] text-neutral-500">Active subscribers</p>
                 </div>
                 <div className={`${cardClass} rounded-2xl text-center`}>
                   <p className="text-lg font-extrabold text-emerald-600 tabular-nums">{summary.paidUsers}</p>
@@ -508,7 +529,7 @@ export function DashboardPage() {
                       className="h-full rounded-full bg-emerald-500"
                       style={{
                         width: `${
-                          summary.totalSubscribers > 0 ? (summary.paidUsers / summary.totalSubscribers) * 100 : 0
+                          summary.billableSubscribers > 0 ? (summary.paidUsers / summary.billableSubscribers) * 100 : 0
                         }%`,
                       }}
                     />
@@ -516,13 +537,15 @@ export function DashboardPage() {
                 </div>
                 <div className={`${cardClass} rounded-2xl text-center`}>
                   <p className="text-lg font-extrabold text-red-600 tabular-nums">{summary.unpaidUsers}</p>
-                  <p className="text-[10.5px] text-neutral-500">Unpaid</p>
+                  <p className="text-[10.5px] text-neutral-500">
+                    Not paid yet{summary.overdueSubscribers > 0 ? ` · ${summary.overdueSubscribers} overdue` : ''}
+                  </p>
                   <div className="mt-2 h-1 overflow-hidden rounded-full bg-neutral-100">
                     <div
                       className="h-full rounded-full bg-red-500"
                       style={{
                         width: `${
-                          summary.totalSubscribers > 0 ? (summary.unpaidUsers / summary.totalSubscribers) * 100 : 0
+                          summary.billableSubscribers > 0 ? (summary.unpaidUsers / summary.billableSubscribers) * 100 : 0
                         }%`,
                       }}
                     />
@@ -530,7 +553,7 @@ export function DashboardPage() {
                 </div>
               </div>
 
-              {/* Products: sold count + total payments, one banded row */}
+              {/* Products sold this month: units, collected, still owed */}
               <div className={`${cardClass} mb-4 flex items-center gap-3.5 rounded-2xl`}>
                 <div className="grid h-9 w-9 shrink-0 place-items-center rounded-[11px] bg-teal-50 text-teal-600">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -539,16 +562,22 @@ export function DashboardPage() {
                     <path d="M10 12h4" />
                   </svg>
                 </div>
-                <div className="flex flex-1 gap-5">
+                <div className="flex flex-1 gap-4">
                   <div>
-                    <p className="text-base font-extrabold text-neutral-900 tabular-nums">{summary.totalSoldProducts}</p>
+                    <p className="text-base font-extrabold text-neutral-900 tabular-nums">{summary.productUnits}</p>
                     <p className="text-[10.5px] text-neutral-500">units sold</p>
                   </div>
                   <div>
                     <p className="text-base font-extrabold text-emerald-600 tabular-nums">
-                      {summary.totalPaymentsProducts.toFixed(2)}
+                      {summary.productPaid.toFixed(2)}
                     </p>
-                    <p className="text-[10.5px] text-neutral-500">collected for them</p>
+                    <p className="text-[10.5px] text-neutral-500">collected</p>
+                  </div>
+                  <div>
+                    <p className="text-base font-extrabold text-rose-600 tabular-nums">
+                      {summary.productLeft.toFixed(2)}
+                    </p>
+                    <p className="text-[10.5px] text-neutral-500">still owed</p>
                   </div>
                 </div>
                 <Link
@@ -660,19 +689,27 @@ export function DashboardPage() {
               }
             >
               {(() => {
-                const totalDue = companyDueRows.reduce((sum, r) => sum + r.amount, 0)
-                const collected = summary?.totalPaymentsCollected ?? 0
-                const shortfall = totalDue - collected
+                if (!summary) return null
+                // Still to pay the real companies (not expense accounts) to
+                // cover every renewal up to the end of the window, against
+                // the cash actually in hand: money received this month minus
+                // everything already paid out this month.
+                const needed = companyDueRows
+                  .filter((r) => r.countsInTotals)
+                  .reduce((sum, r) => sum + Math.max(-r.have, 0), 0)
+                const cashOnHand = summary.cashSubscribers + summary.cashProducts - summary.companyPaidMonthAll
+                const shortfall = needed - cashOnHand
                 const isSaturday = new Date().getDay() === 6
-                if (shortfall <= 0) return null
+                if (needed <= 0 || shortfall <= 0) return null
                 return (
                   <div className="mb-3 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3">
                     <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-600" />
                     <p className="text-xs leading-relaxed text-amber-800">
-                      You've collected <span className="font-semibold tabular-nums">${collected.toFixed(2)}</span> this
-                      period but owe <span className="font-semibold tabular-nums">${totalDue.toFixed(2)}</span> to
-                      companies — make sure you have another{' '}
-                      <span className="font-semibold tabular-nums">${shortfall.toFixed(2)}</span> ready.
+                      You still need to pay companies{' '}
+                      <span className="font-semibold tabular-nums">${needed.toFixed(2)}</span> but have about{' '}
+                      <span className="font-semibold tabular-nums">${Math.max(cashOnHand, 0).toFixed(2)}</span> on hand
+                      (collected this month minus what's already been paid out) — collect another{' '}
+                      <span className="font-semibold tabular-nums">${shortfall.toFixed(2)}</span>.
                       {isSaturday && ' Also, Whish will be closed tomorrow (Sunday) — collect what you need before then.'}
                     </p>
                   </div>
@@ -734,9 +771,16 @@ export function DashboardPage() {
           {isAdmin(staff) && (
             <div className={cardClass}>
               <p className="mb-2 text-sm text-neutral-500">
-                Invoices generate automatically on the 1st of each month. Use this to backfill or
-                re-run for the current month.
+                Invoices generate automatically every night (anyone active who isn't billed for this
+                month yet gets billed). Use this to run it now; it's always safe to re-run.
               </p>
+              {lastRun && (
+                <p className="mb-2 text-xs text-neutral-400">
+                  Last run {new Date(lastRun.ran_at).toLocaleString()} ({lastRun.source}): {lastRun.created}{' '}
+                  created, {lastRun.skipped} already billed
+                  {lastRun.failed > 0 ? `, ${lastRun.failed} failed` : ''}.
+                </p>
+              )}
               <button onClick={handleGenerateInvoices} disabled={generating} className={primaryButtonClass}>
                 {generating ? 'Generating…' : "Generate this month's invoices"}
               </button>

@@ -11,12 +11,17 @@ import {
   loadImportReferenceData,
   matchRows,
   buildBatchRows,
+  diffExistingRows,
+  resolveServiceIdForRow,
   importSubscribersBatch,
   listImportLogs,
   CANONICAL_HEADERS,
   CANONICAL_HEADER_LABELS,
   REQUIRED_CANONICAL_HEADERS,
   type ImportReferenceData,
+  type ImportOptions,
+  type ProtectedField,
+  type ServiceResolutionContext,
   type WorkbookData,
 } from '../../lib/api/import'
 import type { ParsedRow, ImportLog, ColumnMapping } from '../../types/import'
@@ -60,6 +65,17 @@ export function ImportPage() {
 
   const [result, setResult] = useState<{ created: number; updated: number; skipped: number } | null>(null)
 
+  // Which app-managed fields a re-import may overwrite on EXISTING
+  // subscribers. All off by default: expiry (moved by payments/forgiveness/
+  // postponement), status (Deactivate), service and custom price are the
+  // app's to manage once a subscriber exists.
+  const [options, setOptions] = useState<ImportOptions>({
+    update_expiry: false,
+    update_status: false,
+    update_service: false,
+    update_price: false,
+  })
+
   useEffect(() => {
     listImportLogs().then(setLogs).catch(() => {})
   }, [])
@@ -74,6 +90,7 @@ export function ImportPage() {
     setCompanyResolutions({})
     setServiceOverrides({})
     setNewServiceForm({})
+    setOptions({ update_expiry: false, update_status: false, update_service: false, update_price: false })
     setResult(null)
     setError(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
@@ -136,13 +153,31 @@ export function ImportPage() {
     return renderUpload()
   }
 
-  const matched = matchRows(rows, ref)
+  const companyResMap = new Map(Object.entries(companyResolutions))
+  const matched = matchRows(rows, ref, companyResMap)
+  const fileCompanyKey = normalize(workbook.sheetName)
+  const fileCompanyId = matched.companyByName.get(fileCompanyKey)?.id ?? companyResolutions[fileCompanyKey] ?? ''
+  const fileCompanyServices = ref.services.filter((s) => s.comp_id === fileCompanyId)
+  const resolutionCtx: ServiceResolutionContext = {
+    serviceByName: matched.serviceByName,
+    companyByName: matched.companyByName,
+    collectorByName: matched.collectorByName,
+    companyResolutions: companyResMap,
+    serviceOverrides: new Map(Object.entries(serviceOverrides)),
+  }
   const validRows = rows.filter((r) => r.issues.length === 0)
   const newRows = validRows.filter((r) => !r.existingSubscriberId)
   const updateRows = validRows.filter((r) => r.existingSubscriberId)
   const invalidRows = rows.filter((r) =>
-    r.issues.some((i) => i.type === 'missing_username' || i.type === 'missing_company'),
+    r.issues.some((i) => i.type === 'missing_username' || i.type === 'missing_name' || i.type === 'missing_company'),
   )
+  const existingChanges = diffExistingRows(updateRows, ref, (r) => resolveServiceIdForRow(r, resolutionCtx))
+  const protectedCounts: Record<ProtectedField, number> = { expiry: 0, status: 0, service: 0, price: 0 }
+  for (const c of existingChanges) {
+    for (const ch of c.changes) {
+      if (ch.field in protectedCounts) protectedCounts[ch.field as ProtectedField] += 1
+    }
+  }
   const duplicateRows = rows.filter((r) => r.issues.some((i) => i.type === 'duplicate_username'))
   const blockedRows = rows.filter((r) => r.connectionStatus === 'suspended')
 
@@ -162,21 +197,21 @@ export function ImportPage() {
   async function createServiceForName(serviceName: string) {
     const key = normalize(serviceName)
     const draft = newServiceForm[key]
-    if (!draft || !draft.comp_id || !draft.sell_price || !draft.paid_price) {
-      setError('Fill in company and both prices before creating the service.')
+    if (!draft || !fileCompanyId || !draft.sell_price || !draft.paid_price) {
+      setError('Fill in both prices before creating the service.')
       return
     }
     setLoading(true)
     setError(null)
     try {
       const service = await createService({
-        comp_id: draft.comp_id,
+        comp_id: fileCompanyId,
         name: serviceName,
         sell_price: Number(draft.sell_price),
         paid_price: Number(draft.paid_price),
         is_active: true,
       })
-      const companyName = ref?.companies.find((c) => c.id === draft.comp_id)?.name ?? ''
+      const companyName = ref?.companies.find((c) => c.id === fileCompanyId)?.name ?? ''
       setRef((prev) =>
         prev
           ? { ...prev, services: [...prev.services, { ...service, companies: { name: companyName } }] }
@@ -195,15 +230,7 @@ export function ImportPage() {
     setLoading(true)
     setError(null)
     try {
-      const companyResMap = new Map(Object.entries(companyResolutions))
-      const serviceOverrideMap = new Map(Object.entries(serviceOverrides))
-      const batchRows = buildBatchRows(validRows, {
-        serviceByName: matched.serviceByName,
-        companyByName: matched.companyByName,
-        collectorByName: matched.collectorByName,
-        companyResolutions: companyResMap,
-        serviceOverrides: serviceOverrideMap,
-      })
+      const batchRows = buildBatchRows(validRows, resolutionCtx)
       const skipped = rows
         .filter((r) => r.issues.length > 0)
         .map((r) => ({
@@ -213,13 +240,15 @@ export function ImportPage() {
             .map((i) =>
               i.type === 'missing_username'
                 ? 'missing username'
-                : i.type === 'missing_company'
+                : i.type === 'missing_name'
+                  ? 'missing name'
+                  : i.type === 'missing_company'
                   ? 'missing company'
                   : 'duplicate username in file',
             )
             .join(', '),
         }))
-      const res = await importSubscribersBatch(batchRows, filename, staff?.id ?? null, rows.length, skipped)
+      const res = await importSubscribersBatch(batchRows, filename, staff?.id ?? null, rows.length, skipped, options)
       logActivity(
         staff?.id ?? null,
         `${staff?.username ?? 'Someone'} imported ${filename}: ${res.created} created, ${res.updated} updated, ${res.skipped} skipped`,
@@ -410,7 +439,7 @@ export function ImportPage() {
         <Stat label="Total rows" value={rows.length} />
         <Stat label="New subscribers" value={newRows.length} tone="text-emerald-600 dark:text-emerald-400" />
         <Stat label="Will update" value={updateRows.length} tone="text-blue-600 dark:text-blue-400" />
-        <Stat label="Invalid (missing username/company)" value={invalidRows.length} tone="text-red-600 dark:text-red-400" />
+        <Stat label="Invalid (missing username/name/company)" value={invalidRows.length} tone="text-red-600 dark:text-red-400" />
       </div>
 
       {blockedRows.length > 0 && (
@@ -458,10 +487,19 @@ export function ImportPage() {
         </div>
       )}
 
+      {matched.unmatchedCollectors.length > 0 && (
+        <p className="mb-4 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+          Collector not found: {matched.unmatchedCollectors.join(', ')}. Those rows keep their current
+          collector (new subscribers get none) — check the spelling, or add the collector under Admin →
+          Collectors first and re-upload.
+        </p>
+      )}
+
       {matched.unresolvedServices.length > 0 && (
         <div className="mb-4">
           <h2 className="mb-2 text-sm font-semibold text-neutral-700 dark:text-neutral-300">
-            Unrecognized Service values — map to an existing service or create one
+            Services not found under {ref.companies.find((c) => c.id === fileCompanyId)?.name ?? 'this company'} — map
+            to one of its services or create one
           </h2>
           <div className="space-y-2">
             {matched.unresolvedServices.map((name) => {
@@ -474,7 +512,7 @@ export function ImportPage() {
                   </div>
                 )
               }
-              const draft = newServiceForm[key] ?? { comp_id: '', sell_price: '', paid_price: '' }
+              const draft = newServiceForm[key] ?? { comp_id: fileCompanyId, sell_price: '', paid_price: '' }
               return (
                 <div key={name} className={cardClass}>
                   <p className="mb-2 text-sm font-medium text-neutral-800 dark:text-neutral-100">{name}</p>
@@ -487,29 +525,15 @@ export function ImportPage() {
                       className={inputClass}
                     >
                       <option value="">Map to existing service…</option>
-                      {ref.services.map((s) => (
+                      {fileCompanyServices.map((s) => (
                         <option key={s.id} value={s.id}>
-                          {s.name} ({s.companies?.name})
+                          {s.name}
                         </option>
                       ))}
                     </select>
                   </div>
                   <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">— or create a new service —</p>
-                  <div className="grid grid-cols-3 gap-2">
-                    <select
-                      value={draft.comp_id}
-                      onChange={(e) =>
-                        setNewServiceForm((prev) => ({ ...prev, [key]: { ...draft, comp_id: e.target.value } }))
-                      }
-                      className={inputClass}
-                    >
-                      <option value="">Company…</option>
-                      {ref.companies.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
+                  <div className="grid grid-cols-2 gap-2">
                     <input
                       type="number"
                       step="0.01"
@@ -544,6 +568,66 @@ export function ImportPage() {
                 </div>
               )
             })}
+          </div>
+        </div>
+      )}
+
+      {existingChanges.length > 0 && (
+        <div className="mb-4">
+          <h2 className="mb-1 text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+            Changes to existing subscribers ({existingChanges.length})
+          </h2>
+          <p className="mb-2 text-xs text-neutral-500">
+            Name and phone always follow the file. These are managed in the app (payments move the expiry,
+            Deactivate changes the status, the Pay modal sets custom prices), so they're left as they are unless
+            you tick them:
+          </p>
+          <div className="mb-3 grid grid-cols-2 gap-2">
+            {(
+              [
+                ['expiry', 'update_expiry', 'Expiry date'],
+                ['status', 'update_status', 'Connection status'],
+                ['service', 'update_service', 'Service / company'],
+                ['price', 'update_price', 'Custom price'],
+              ] as const
+            ).map(([field, opt, label]) => (
+              <label
+                key={field}
+                className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+                  protectedCounts[field] === 0 ? 'border-neutral-100 text-neutral-400' : 'border-neutral-200 text-neutral-800'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={options[opt]}
+                  disabled={protectedCounts[field] === 0}
+                  onChange={(e) => setOptions((o) => ({ ...o, [opt]: e.target.checked }))}
+                  className="h-4 w-4"
+                />
+                Update {label.toLowerCase()} ({protectedCounts[field]})
+              </label>
+            ))}
+          </div>
+          <div className="max-h-72 space-y-1.5 overflow-y-auto">
+            {existingChanges.slice(0, 50).map(({ row, changes }) => (
+              <div key={row.rowIndex} className="rounded-lg border border-neutral-100 bg-white px-3 py-2 text-xs">
+                <p className="font-semibold text-neutral-800">
+                  {row.name} <span className="font-normal text-neutral-400">({row.externalUsername})</span>
+                </p>
+                {changes.map((ch) => {
+                  const applies =
+                    ch.field === 'name' || ch.field === 'phone' || options[`update_${ch.field}` as keyof ImportOptions]
+                  return (
+                    <p key={ch.field} className={applies ? 'text-neutral-700' : 'text-neutral-400 line-through'}>
+                      {ch.field}: {ch.from} → {ch.to}
+                    </p>
+                  )
+                })}
+              </div>
+            ))}
+            {existingChanges.length > 50 && (
+              <p className="text-xs text-neutral-400">…and {existingChanges.length - 50} more</p>
+            )}
           </div>
         </div>
       )}

@@ -28,24 +28,12 @@ import type { MonthlyLogRow } from '../types/reports'
 import { AppHeader } from '../components/AppHeader'
 import { PaymentModal } from '../components/subscriber/PaymentModal'
 import { cardClass } from '../lib/uiClasses'
+import { billingKeyFor, currentPeriodMonth, statusDotColor } from '../lib/subscriberRowHelpers'
 
-function currentPeriodMonth() {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-}
-
-function statusDotColor(log: MonthlyLogRow | undefined, debt: number): string {
-  if (log?.status === 'partial') return 'bg-orange-500'
-  if (debt > 0) return 'bg-red-500'
-  if (log?.status === 'paid' || log?.status === 'waived') return 'bg-emerald-500'
-  if (log?.status === 'postponed') return 'bg-orange-500'
-  return 'bg-neutral-300'
-}
-
-// "Collected" means exactly what the green dot means: this period's invoice
-// is paid (or waived) and nothing is still owed from earlier periods.
+// "Collected" means exactly what the green dot means: this month's bill is
+// paid (or forgiven) and nothing is overdue.
 function isCollected(log: MonthlyLogRow | undefined, debt: number): boolean {
-  return statusDotColor(log, debt) === 'bg-emerald-500'
+  return billingKeyFor(log, debt) === 'paid'
 }
 
 // How long a just-paid row stays in the pending list, highlighted green,
