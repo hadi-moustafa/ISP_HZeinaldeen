@@ -78,3 +78,10 @@ export async function reorderCollectTrack(staffId: string, orderedEntryIds: stri
     ),
   )
 }
+
+// Empties this staff member's whole collect track -- "Finish list" on the
+// Dabdabeh page, so they can build a fresh batch from the Subscribers page.
+export async function clearCollectTrack(staffId: string): Promise<void> {
+  const { error } = await supabase.from('collect_track_items').delete().eq('staff_id', staffId)
+  if (error) throw error
+}
