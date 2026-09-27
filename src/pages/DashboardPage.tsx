@@ -264,13 +264,36 @@ export function DashboardPage() {
     <div className="min-h-screen bg-neutral-50">
       <AppHeader>
         <main className="p-3">
-          <div className="mb-3 flex items-center gap-3">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
             <div className="min-w-0 shrink-0">
               <h1 className="text-lg font-semibold text-neutral-900">Dashboard</h1>
-              <p className="text-sm text-neutral-500">{currentMonthLabel()}</p>
+              <p className="text-xs text-neutral-500">{currentMonthLabel()}</p>
             </div>
 
-            <div className="relative ml-auto flex min-w-0 flex-1 items-center justify-end gap-1.5">
+            {/* Paid / Unpaid toggle -- narrows the search/filter results
+                beside it, or on its own lists everyone paid / unpaid. */}
+            <div className="flex shrink-0 rounded-full bg-white p-0.5 shadow-sm">
+              {(
+                [
+                  ['any', 'All', 'bg-neutral-900 text-white'],
+                  ['paid', 'Paid', 'bg-emerald-500 text-white'],
+                  ['unpaid', 'Unpaid', 'bg-red-500 text-white'],
+                ] as const
+              ).map(([value, label, activeClass]) => (
+                <button
+                  key={value}
+                  onClick={() => setPaidFilter(value)}
+                  aria-pressed={paidFilter === value}
+                  className={`rounded-full px-1.5 py-1 text-[11px] font-semibold ${
+                    paidFilter === value ? activeClass : 'text-neutral-500'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div className="relative ml-auto flex min-w-[128px] flex-1 items-center justify-end gap-1.5">
               <button
                 onClick={() => setFilterFieldMenuOpen((v) => !v)}
                 className="flex shrink-0 items-center gap-0.5 rounded-full bg-white px-2 py-1.5 text-xs font-medium text-neutral-700 shadow-sm"
@@ -280,7 +303,7 @@ export function DashboardPage() {
               </button>
 
               {TEXT_FILTER_FIELDS.includes(filterField) && (
-                <div className="flex max-w-32 flex-1 items-center rounded-full bg-white px-2 shadow-sm">
+                <div className="flex min-w-0 max-w-32 flex-1 items-center rounded-full bg-white px-2 shadow-sm">
                   <Search size={12} className="mr-1 shrink-0 text-neutral-400" />
                   <input
                     value={filterField === 'phone' ? filters.phone : filterField === 'notes' ? filters.notes : filters.search}
@@ -300,7 +323,7 @@ export function DashboardPage() {
                 <select
                   value={filters.collectorId}
                   onChange={(e) => updateFilter('collectorId', e.target.value)}
-                  className="max-w-32 flex-1 rounded-full bg-white px-2 py-1.5 text-xs text-neutral-900 shadow-sm"
+                  className="min-w-0 max-w-32 flex-1 rounded-full bg-white px-2 py-1.5 text-xs text-neutral-900 shadow-sm"
                 >
                   <option value="">Any collector</option>
                   {collectors.map((c) => (
@@ -318,7 +341,7 @@ export function DashboardPage() {
                     updateFilter('companyId', e.target.value)
                     updateFilter('serviceId', '')
                   }}
-                  className="max-w-32 flex-1 rounded-full bg-white px-2 py-1.5 text-xs text-neutral-900 shadow-sm"
+                  className="min-w-0 max-w-32 flex-1 rounded-full bg-white px-2 py-1.5 text-xs text-neutral-900 shadow-sm"
                 >
                   <option value="">Any company</option>
                   {companies.map((c) => (
@@ -333,7 +356,7 @@ export function DashboardPage() {
                 <select
                   value={filters.serviceId}
                   onChange={(e) => updateFilter('serviceId', e.target.value)}
-                  className="max-w-32 flex-1 rounded-full bg-white px-2 py-1.5 text-xs text-neutral-900 shadow-sm"
+                  className="min-w-0 max-w-32 flex-1 rounded-full bg-white px-2 py-1.5 text-xs text-neutral-900 shadow-sm"
                 >
                   <option value="">Any service</option>
                   {filteredServices.map((s) => (
@@ -348,7 +371,7 @@ export function DashboardPage() {
                 <select
                   value={filters.addressId}
                   onChange={(e) => updateFilter('addressId', e.target.value)}
-                  className="max-w-32 flex-1 rounded-full bg-white px-2 py-1.5 text-xs text-neutral-900 shadow-sm"
+                  className="min-w-0 max-w-32 flex-1 rounded-full bg-white px-2 py-1.5 text-xs text-neutral-900 shadow-sm"
                 >
                   <option value="">Any address</option>
                   {addresses.map((a) => (
@@ -363,7 +386,7 @@ export function DashboardPage() {
                 <select
                   value={filters.nationality}
                   onChange={(e) => updateFilter('nationality', e.target.value as typeof filters.nationality)}
-                  className="max-w-32 flex-1 rounded-full bg-white px-2 py-1.5 text-xs text-neutral-900 shadow-sm"
+                  className="min-w-0 max-w-32 flex-1 rounded-full bg-white px-2 py-1.5 text-xs text-neutral-900 shadow-sm"
                 >
                   <option value="">Any nationality</option>
                   <option value="Lebanese">Lebanese</option>
@@ -375,7 +398,7 @@ export function DashboardPage() {
                 <select
                   value={filters.status}
                   onChange={(e) => updateFilter('status', e.target.value as typeof filters.status)}
-                  className="max-w-32 flex-1 rounded-full bg-white px-2 py-1.5 text-xs text-neutral-900 shadow-sm"
+                  className="min-w-0 max-w-32 flex-1 rounded-full bg-white px-2 py-1.5 text-xs text-neutral-900 shadow-sm"
                 >
                   <option value="">Any status</option>
                   <option value="active">Active</option>
@@ -385,7 +408,7 @@ export function DashboardPage() {
               )}
 
               {filterField === 'expiry' && (
-                <div className="flex max-w-40 flex-1 gap-1">
+                <div className="flex min-w-0 max-w-40 flex-1 gap-1">
                   <input
                     type="date"
                     value={filters.expiryFrom}
@@ -402,7 +425,7 @@ export function DashboardPage() {
               )}
 
               {filterField === 'connection' && (
-                <div className="flex max-w-40 flex-1 gap-1">
+                <div className="flex min-w-0 max-w-40 flex-1 gap-1">
                   <input
                     type="date"
                     value={filters.connectionFrom}
@@ -436,29 +459,6 @@ export function DashboardPage() {
                   ))}
                 </div>
               )}
-            </div>
-          </div>
-
-          <div className="mb-3 flex justify-end">
-            <div className="flex gap-0.5 rounded-full bg-white p-0.5 shadow-sm">
-              {(
-                [
-                  ['any', 'All', 'bg-neutral-900 text-white'],
-                  ['paid', 'Paid', 'bg-emerald-500 text-white'],
-                  ['unpaid', 'Unpaid', 'bg-red-500 text-white'],
-                ] as const
-              ).map(([value, label, activeClass]) => (
-                <button
-                  key={value}
-                  onClick={() => setPaidFilter(value)}
-                  aria-pressed={paidFilter === value}
-                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                    paidFilter === value ? activeClass : 'text-neutral-500'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
             </div>
           </div>
 
