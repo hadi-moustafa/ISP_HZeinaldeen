@@ -30,7 +30,7 @@ import { FILTER_FIELDS, TEXT_FILTER_FIELDS, type FilterField } from '../lib/subs
 import { AppHeader } from '../components/AppHeader'
 import { PaymentModal } from '../components/subscriber/PaymentModal'
 import { SubscriberRow } from '../components/subscriber/SubscriberRow'
-import { currentPeriodMonth, compareByExpiryDay, quickPostpone } from '../lib/subscriberRowHelpers'
+import { currentPeriodMonth, compareByExpiryDay, quickPostpone, billingKeyFor } from '../lib/subscriberRowHelpers'
 import { primaryButtonClass, cardClass } from '../lib/uiClasses'
 import { Search, ChevronDown, AlertTriangle } from 'lucide-react'
 
@@ -69,6 +69,9 @@ export function DashboardPage() {
   const [filterField, setFilterField] = useState<FilterField>('name')
   const [filterFieldMenuOpen, setFilterFieldMenuOpen] = useState(false)
   const [searchResults, setSearchResults] = useState<SubscriberWithRelations[]>([])
+  // Paid / Unpaid toggle, applied on top of whatever search/filter is set.
+  // On its own (no search or filter) it lists everyone paid / unpaid.
+  const [paidFilter, setPaidFilter] = useState<'any' | 'paid' | 'unpaid'>('any')
   const [searching, setSearching] = useState(false)
 
   const [services, setServices] = useState<ServiceWithCompany[]>([])
@@ -157,8 +160,23 @@ export function DashboardPage() {
     return value !== ''
   }).length
 
+  const searchActive = activeFilterCount > 0 || paidFilter !== 'any'
+
+  // Same meaning as the dashboard's Paid / Not paid yet tiles: paid = this
+  // month's bill paid or forgiven (the green dot); unpaid = an active
+  // subscriber with a service who hasn't paid yet (suspended/cancelled
+  // subscribers aren't billed, so they're never "unpaid").
+  const displayedResults = useMemo(() => {
+    if (paidFilter === 'any') return searchResults
+    return searchResults.filter((sub) => {
+      const paid = billingKeyFor(monthlyLogBySubscriber[sub.id], sub.debt) === 'paid'
+      if (paidFilter === 'paid') return paid
+      return !paid && sub.connection_status === 'active' && Boolean(sub.service_id)
+    })
+  }, [searchResults, paidFilter, monthlyLogBySubscriber])
+
   useEffect(() => {
-    if (activeFilterCount === 0) {
+    if (!searchActive) {
       setSearchResults([])
       setSearching(false)
       return
@@ -202,7 +220,7 @@ export function DashboardPage() {
       clearTimeout(timer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters, filterField, services, owners])
+  }, [filters, filterField, services, owners, searchActive])
 
   function updateFilter<K extends keyof typeof filters>(key: K, value: (typeof filters)[K]) {
     setFilters((f) => ({ ...f, [key]: value }))
@@ -421,22 +439,55 @@ export function DashboardPage() {
             </div>
           </div>
 
+          <div className="mb-3 flex justify-end">
+            <div className="flex gap-0.5 rounded-full bg-white p-0.5 shadow-sm">
+              {(
+                [
+                  ['any', 'All', 'bg-neutral-900 text-white'],
+                  ['paid', 'Paid', 'bg-emerald-500 text-white'],
+                  ['unpaid', 'Unpaid', 'bg-red-500 text-white'],
+                ] as const
+              ).map(([value, label, activeClass]) => (
+                <button
+                  key={value}
+                  onClick={() => setPaidFilter(value)}
+                  aria-pressed={paidFilter === value}
+                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                    paidFilter === value ? activeClass : 'text-neutral-500'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
 
-          {activeFilterCount > 0 && (
+          {searchActive && (
             <div className="mb-4 space-y-1.5">
               <div className="flex items-center justify-between">
                 <p className="text-xs text-neutral-400">
-                  {searching ? 'Searching…' : `${searchResults.length} match${searchResults.length === 1 ? '' : 'es'}`}
+                  {searching
+                    ? 'Searching…'
+                    : `${displayedResults.length} ${paidFilter === 'any' ? '' : `${paidFilter} `}match${
+                        displayedResults.length === 1 ? '' : 'es'
+                      }`}
                 </p>
-                <button onClick={() => setFilters(emptyFilters)} className="text-xs font-medium text-neutral-500">
+                <button
+                  onClick={() => {
+                    setFilters(emptyFilters)
+                    setPaidFilter('any')
+                  }}
+                  className="text-xs font-medium text-neutral-500"
+                >
                   Clear
                 </button>
               </div>
-              {!searching && searchResults.length === 0 && (
+              {!searching && displayedResults.length === 0 && (
                 <p className="text-xs text-neutral-400">No subscribers match.</p>
               )}
-              {searchResults.map((sub) => (
+              {displayedResults.map((sub) => (
                 <SubscriberRow
                   key={sub.id}
                   sub={sub}
