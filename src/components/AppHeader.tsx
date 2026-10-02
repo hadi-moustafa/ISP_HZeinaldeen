@@ -17,7 +17,15 @@ export function HeaderActions({ children }: { children: ReactNode }) {
   return createPortal(children, node)
 }
 
-type NavLinkItem = { to: string; label: string; adminOnly?: boolean; collectorHidden?: boolean }
+type NavLinkItem = {
+  to: string
+  label: string
+  adminOnly?: boolean
+  collectorHidden?: boolean
+  // Overrides the default grey label color (e.g. Management is blue,
+  // client instruction).
+  textClass?: string
+}
 
 // Everyday pages the whole staff uses -- kept flat and always visible, one
 // tap away, never buried in a dropdown.
@@ -25,6 +33,7 @@ const primaryLinks: NavLinkItem[] = [
   { to: '/', label: 'Dashboard', collectorHidden: true },
   { to: '/subscribers', label: 'Subscribers' },
   { to: '/dabdabeh', label: 'Dabdabeh' },
+  { to: '/admin/management', label: 'Management', adminOnly: true, collectorHidden: true, textClass: 'text-blue-600' },
   { to: '/reports/monthly-log', label: 'Monthly Log', collectorHidden: true },
   { to: '/reports/financials', label: 'Financial Report', adminOnly: true, collectorHidden: true },
   { to: '/field', label: 'Field View (offline)', collectorHidden: true },
@@ -161,7 +170,9 @@ export function AppHeader({ title = 'ISP Manager', children }: { title?: string;
                       onClick={() => setMenuOpen(false)}
                       className={({ isActive }) =>
                         `block rounded-md px-3 py-2.5 text-sm font-medium ${
-                          isActive ? 'bg-indigo-50 text-indigo-600' : 'text-neutral-700 active:bg-neutral-100'
+                          isActive
+                            ? `bg-indigo-50 ${link.textClass ?? 'text-indigo-600'}`
+                            : `${link.textClass ?? 'text-neutral-700'} active:bg-neutral-100`
                         }`
                       }
                     >
