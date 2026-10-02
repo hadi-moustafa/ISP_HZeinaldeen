@@ -15,7 +15,6 @@ import { listServices } from '../../lib/api/services'
 import { listAddresses } from '../../lib/api/addresses'
 import { listRegions } from '../../lib/api/regions'
 import { addToCollectTrack } from '../../lib/api/collectTrack'
-import { addToManagement, formatDateTime } from '../../lib/api/management'
 import { listMonthlyLog } from '../../lib/api/reports'
 import { logActivity } from '../../lib/api/activityLog'
 import type { SubscriberWithRelations } from '../../types/subscribers'
@@ -24,7 +23,6 @@ import { FILTER_FIELDS, TEXT_FILTER_FIELDS, type FilterField } from '../../lib/s
 import type { MonthlyLogRow } from '../../types/reports'
 import type { Owner, Collector, Company, ServiceWithCompany, Address, Region } from '../../types/reference'
 import { useStaff } from '../../context/StaffContext'
-import { isAdmin } from '../../lib/permissions'
 import { HeaderActions } from '../../components/AppHeader'
 import { PaymentModal } from '../../components/subscriber/PaymentModal'
 import { SubscriberRow } from '../../components/subscriber/SubscriberRow'
@@ -286,26 +284,6 @@ export function SubscribersListPage() {
     }
   }
 
-
-  // Admin-only "Management" list (see ManagementPage). Each subscriber
-  // actually added gets its own log line with the date/time.
-  async function handleBulkAddToManagement() {
-    const ids = Array.from(selectedIds)
-    if (ids.length === 0 || !staff) return
-    try {
-      const added = await addToManagement(staff.id, ids)
-      const when = formatDateTime(new Date().toISOString())
-      const names = new Map(subscribers.map((s) => [s.id, s.name]))
-      for (const id of added) {
-        logActivity(staff.id, `${staff.username} added ${names.get(id) ?? 'a subscriber'} to Management on ${when}`, 'management', id)
-      }
-      setSelectedIds(new Set())
-      const skipped = ids.length - added.length
-      if (skipped > 0) alert(`${added.length} added to Management, ${skipped} already on it.`)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add selected subscribers to management')
-    }
-  }
 
   // Always smallest-to-largest expiry day by default (client instruction:
   // "view every output in increasing order"), with a descending option.
@@ -633,14 +611,6 @@ export function SubscribersListPage() {
             >
               Add to collect track
             </button>
-            {isAdmin(staff) && (
-              <button
-                onClick={handleBulkAddToManagement}
-                className="shrink-0 rounded-full bg-blue-100 px-3 py-2 text-xs font-semibold text-blue-700"
-              >
-                Add to management
-              </button>
-            )}
             <button
               onClick={handleBulkDeactivate}
               className="shrink-0 rounded-full bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-700"

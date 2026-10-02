@@ -15,7 +15,6 @@ import { ProductsHubPage } from './pages/admin/ProductsHubPage'
 import { SubscriberToolsPage } from './pages/admin/SubscriberToolsPage'
 import { WhatsAppMessagesPage } from './pages/admin/WhatsAppMessagesPage'
 import { ActivityLogPage } from './pages/admin/ActivityLogPage'
-import { ManagementPage } from './pages/admin/ManagementPage'
 import { SubscribersListPage } from './pages/subscribers/SubscribersListPage'
 import { SubscriberFormPage } from './pages/subscribers/SubscriberFormPage'
 import { SubscriberDetailPage } from './pages/subscribers/SubscriberDetailPage'
@@ -55,14 +54,6 @@ function App() {
             <Route path="subscriber-tools" element={<SubscriberToolsPage />} />
             <Route path="whatsapp-messages" element={<WhatsAppMessagesPage />} />
             <Route path="activity-log" element={<ActivityLogPage />} />
-            <Route
-              path="management"
-              element={
-                <ProtectedRoute adminOnly>
-                  <ManagementPage />
-                </ProtectedRoute>
-              }
-            />
 
             {/* Old routes consolidated above -- redirect so no existing
                 bookmark or link 404s. */}
