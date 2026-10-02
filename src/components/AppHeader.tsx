@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { Menu, X, LogOut, ChevronDown, ArrowLeft } from 'lucide-react'
 import { useStaff } from '../context/StaffContext'
-import { isAdmin, isCollector } from '../lib/permissions'
+import { isAdmin, isCollector, isTechnician } from '../lib/permissions'
 import { homePath, useGoBack } from '../lib/navigation'
 
 const HeaderActionsContext = createContext<HTMLDivElement | null>(null)
@@ -17,7 +17,14 @@ export function HeaderActions({ children }: { children: ReactNode }) {
   return createPortal(children, node)
 }
 
-type NavLinkItem = { to: string; label: string; adminOnly?: boolean; collectorHidden?: boolean }
+type NavLinkItem = {
+  to: string
+  label: string
+  adminOnly?: boolean
+  collectorHidden?: boolean
+  // Technician accounts see only links marked for them, nothing else.
+  technician?: boolean
+}
 
 // Everyday pages the whole staff uses -- kept flat and always visible, one
 // tap away, never buried in a dropdown.
@@ -25,6 +32,8 @@ const primaryLinks: NavLinkItem[] = [
   { to: '/', label: 'Dashboard', collectorHidden: true },
   { to: '/subscribers', label: 'Subscribers' },
   { to: '/dabdabeh', label: 'Dabdabeh' },
+  { to: '/admin/tasks', label: 'Tasks', adminOnly: true, collectorHidden: true },
+  { to: '/tasks', label: 'My tasks', technician: true },
   { to: '/reports/monthly-log', label: 'Monthly Log', collectorHidden: true },
   { to: '/reports/financials', label: 'Financial Report', adminOnly: true, collectorHidden: true },
   { to: '/field', label: 'Field View (offline)', collectorHidden: true },
@@ -39,6 +48,7 @@ const groups: { key: string; heading: string; links: NavLinkItem[] }[] = [
     links: [
       { to: '/admin/company', label: 'Company', collectorHidden: true },
       { to: '/admin/collectors', label: 'Collectors', collectorHidden: true },
+      { to: '/admin/technicians', label: 'Technicians', adminOnly: true, collectorHidden: true },
       { to: '/admin/owners', label: 'Owners', collectorHidden: true },
       { to: '/admin/addresses', label: 'Addresses', collectorHidden: true },
       { to: '/admin/products', label: 'Products', collectorHidden: true },
@@ -61,7 +71,10 @@ const groups: { key: string; heading: string; links: NavLinkItem[] }[] = [
 ]
 
 function visibleLinks(links: NavLinkItem[], staff: ReturnType<typeof useStaff>['staff']) {
-  return links.filter((l) => (!l.adminOnly || isAdmin(staff)) && (!l.collectorHidden || !isCollector(staff)))
+  if (isTechnician(staff)) return links.filter((l) => l.technician)
+  return links.filter(
+    (l) => !l.technician && (!l.adminOnly || isAdmin(staff)) && (!l.collectorHidden || !isCollector(staff)),
+  )
 }
 
 // Wraps a layout's page content: renders the header (hamburger + title +

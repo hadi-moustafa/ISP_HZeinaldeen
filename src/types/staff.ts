@@ -1,4 +1,4 @@
-export type StaffRole = 'admin' | 'collector'
+export type StaffRole = 'admin' | 'collector' | 'technician'
 
 export interface CurrentStaff {
   id: string

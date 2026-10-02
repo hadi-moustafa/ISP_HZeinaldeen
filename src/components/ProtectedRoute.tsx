@@ -1,14 +1,16 @@
 import type { ReactNode } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useStaff } from '../context/StaffContext'
-import { isAdmin, isCollector } from '../lib/permissions'
+import { isAdmin, isCollector, isTechnician } from '../lib/permissions'
 
 export function ProtectedRoute({
   children,
   adminOnly = false,
+  technicianOnly = false,
 }: {
   children: ReactNode
   adminOnly?: boolean
+  technicianOnly?: boolean
 }) {
   const { staff, loading } = useStaff()
   const location = useLocation()
@@ -17,6 +19,14 @@ export function ProtectedRoute({
 
   if (!staff) {
     return <Navigate to="/login" state={{ from: location.pathname }} replace />
+  }
+
+  // Technicians get exactly one page, their Tasks list.
+  if (isTechnician(staff)) {
+    return technicianOnly ? <>{children}</> : <Navigate to="/tasks" replace />
+  }
+  if (technicianOnly) {
+    return <Navigate to={isAdmin(staff) ? '/admin/tasks' : '/'} replace />
   }
 
   if (adminOnly && !isAdmin(staff)) {

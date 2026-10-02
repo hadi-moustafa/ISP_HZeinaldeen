@@ -23,6 +23,7 @@ import { openWhatsApp, paymentSummaryMessage, useMessageTemplates } from '../../
 import { round2 } from '../../lib/money'
 import { useStaff } from '../../context/StaffContext'
 import { Modal } from '../Modal'
+import { MonthTasksSummary } from '../tasks/MonthTasksSummary'
 import { inputClass, secondaryButtonClass, primaryButtonClass, dangerButtonClass } from '../../lib/uiClasses'
 import { Clock, Plus, X } from 'lucide-react'
 import type { SubscriberWithRelations } from '../../types/subscribers'
@@ -578,6 +579,8 @@ export function PaymentModal({
       ) : (
         <form onSubmit={handleSaveClick}>
           {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+
+          {activeSub && <MonthTasksSummary subscriberId={activeSub.id} />}
 
           {/* Service */}
           <div className="mb-3 flex items-center gap-2">

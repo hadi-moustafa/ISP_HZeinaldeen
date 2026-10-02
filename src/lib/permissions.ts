@@ -13,6 +13,12 @@ export function isAdmin(staff: CurrentStaff | null): boolean {
   return staff?.role === 'admin'
 }
 
+// Technicians only get their own Tasks page (/tasks) -- enforced in
+// ProtectedRoute, same as the collector restriction.
+export function isTechnician(staff: CurrentStaff | null): boolean {
+  return staff?.role === 'technician'
+}
+
 // Collectors are restricted to the Subscribers page and its functionality
 // (list, view, edit, pay) -- explicit client instruction, unlike the
 // deliberately-unrestricted canAccess() above. Enforced centrally in

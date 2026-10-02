@@ -1,12 +1,14 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useStaff } from '../context/StaffContext'
-import { isCollector } from './permissions'
+import { isCollector, isTechnician } from './permissions'
 import type { CurrentStaff } from '../types/staff'
 
 // Where "home" is for this staff member -- collectors never see the
 // dashboard (ProtectedRoute bounces them to /subscribers), so their home is
 // the subscriber list instead.
+// Technicians only ever see their Tasks page.
 export function homePath(staff: CurrentStaff | null): string {
+  if (isTechnician(staff)) return '/tasks'
   return isCollector(staff) ? '/subscribers' : '/'
 }
 
@@ -18,6 +20,7 @@ const ROOT_PATHS = [
   '/',
   '/subscribers',
   '/dabdabeh',
+  '/tasks',
   '/reports/monthly-log',
   '/reports/financials',
   '/field',

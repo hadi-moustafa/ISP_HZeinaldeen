@@ -15,6 +15,9 @@ import { ProductsHubPage } from './pages/admin/ProductsHubPage'
 import { SubscriberToolsPage } from './pages/admin/SubscriberToolsPage'
 import { WhatsAppMessagesPage } from './pages/admin/WhatsAppMessagesPage'
 import { ActivityLogPage } from './pages/admin/ActivityLogPage'
+import { TasksPage } from './pages/admin/TasksPage'
+import { TechniciansPage } from './pages/admin/TechniciansPage'
+import { MyTasksPage } from './pages/MyTasksPage'
 import { SubscribersListPage } from './pages/subscribers/SubscribersListPage'
 import { SubscriberFormPage } from './pages/subscribers/SubscriberFormPage'
 import { SubscriberDetailPage } from './pages/subscribers/SubscriberDetailPage'
@@ -54,6 +57,22 @@ function App() {
             <Route path="subscriber-tools" element={<SubscriberToolsPage />} />
             <Route path="whatsapp-messages" element={<WhatsAppMessagesPage />} />
             <Route path="activity-log" element={<ActivityLogPage />} />
+            <Route
+              path="tasks"
+              element={
+                <ProtectedRoute adminOnly>
+                  <TasksPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="technicians"
+              element={
+                <ProtectedRoute adminOnly>
+                  <TechniciansPage />
+                </ProtectedRoute>
+              }
+            />
 
             {/* Old routes consolidated above -- redirect so no existing
                 bookmark or link 404s. */}
@@ -111,6 +130,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <OfflinePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/tasks"
+            element={
+              <ProtectedRoute technicianOnly>
+                <MyTasksPage />
               </ProtectedRoute>
             }
           />

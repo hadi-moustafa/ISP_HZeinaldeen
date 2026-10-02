@@ -176,3 +176,17 @@ Follow-up to a full review of debt / forgive / postpone / company dues / import 
 - **Paging**: `fetchAllRows()` (`src/lib/api/fetchAll.ts`) for the subscriber list, monthly log and import lookup — PostgREST silently caps responses at 1000 rows.
 - `supabase db query --linked` works for read-only checks and for dry-running a migration inside `BEGIN … ROLLBACK`; that's how 0030–0032 were verified before `db push`.
 - **Not changed, deliberately**: RLS is still off and `subscribers.password` is plaintext and readable with the public key. Fixing that needs real auth (Supabase Auth or a server) — the app authenticates against its own `staff` table from the browser, so RLS can't tell staff from anyone else yet.
+
+## Tasks + technician accounts (2026-10-02, migration 0035)
+
+(Replaces the short-lived Management page, 0033 → dropped in 0034.)
+
+- **New staff role `technician`** (`staff_role_check` widened). A technician can only open `/tasks` (`MyTasksPage.tsx`) — enforced in `ProtectedRoute` (`technicianOnly` prop; any other route bounces a technician to `/tasks`, and `/tasks` bounces non-technicians to `/admin/tasks`). `homePath()` / `LoginPage` land them there; the drawer shows them only links flagged `technician: true`. Accounts are managed on `/admin/technicians` (`TechniciansPage.tsx`, `create_technician_login()` RPC + existing `set_staff_password()`).
+- **Admin `/admin/tasks`** (`TasksPage.tsx`): CRUD. Picking a subscriber pre-fills address (area + address line + building, deduped) and phone; both are stored **on the task** and editable without touching the subscriber. Fields: problem (required), possible fixes, notes, priority (normal/high/urgent), technician (or "any technician"). Metrics: to do, done this month, done total, can't be done, orders to confirm. Finished tab with Done / Can't-be-done filter and Reopen.
+- **Statuses**: `open` → `half_done` (stays on the technician's list) or `done` / `cant_do` (closed, goes to the admin's Finished tab). `status_changed_at` / `finished_at` stamped by the `stamp_task_status` trigger; `status_changed_by` set by the app. "Can't be done" requires a report (client-side).
+- **Visibility**: a technician sees tasks assigned to them plus unassigned ones.
+- **Auto priority**: an unfinished task created before today (Beirut) shows as at least High — computed at read time in `src/lib/tasks.ts` (`effectivePriority`), not stored, no cron.
+- **Product orders** (`task_product_orders`): the technician only *requests* (product + qty + note). Nothing touches stock or money until the admin confirms, via `confirm_task_product_order()` — runs the existing `log_product_sale()` and marks the order `sold` in one transaction (price blank = normal price; "paid now" 0 = unpaid on the subscriber's account, collected through Pay). Or the admin rejects it.
+- **Pay modal**: `MonthTasksSummary` at the top lists this subscriber's task work this Beirut month (status, time, technician, report, products) before payment is taken.
+- **Activity log**: create/edit/delete/reopen task, status changes (with date/time), reports, order add/remove/confirm/reject, technician account create/edit/delete (`entity_type` `task` / `technician`).
+- `subscriber_id` is `ON DELETE SET NULL` with a `subscriber_name` snapshot, so history and metrics survive a subscriber delete.

@@ -51,3 +51,41 @@ export async function deleteCollectorLogin(collectorId: string) {
   const { error } = await supabase.from('staff').delete().eq('collector_id', collectorId).eq('role', 'collector')
   if (error) throw error
 }
+
+// Technician accounts (role 'technician'): a login only, no business
+// entity behind it like collectors have.
+export interface TechnicianStaff {
+  id: string
+  username: string
+  is_active: boolean
+  created_at: string
+}
+
+export async function listTechnicians(): Promise<TechnicianStaff[]> {
+  const { data, error } = await supabase
+    .from('staff')
+    .select('id, username, is_active, created_at')
+    .eq('role', 'technician')
+    .order('username')
+  if (error) throw error
+  return data as TechnicianStaff[]
+}
+
+export async function createTechnicianLogin(username: string, password: string) {
+  const { data, error } = await supabase.rpc('create_technician_login', {
+    p_username: username,
+    p_password: password,
+  })
+  if (error) throw error
+  return data as string
+}
+
+export async function updateTechnician(staffId: string, values: { username?: string; is_active?: boolean }) {
+  const { error } = await supabase.from('staff').update(values).eq('id', staffId).eq('role', 'technician')
+  if (error) throw error
+}
+
+export async function deleteTechnician(staffId: string) {
+  const { error } = await supabase.from('staff').delete().eq('id', staffId).eq('role', 'technician')
+  if (error) throw error
+}

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useStaff } from '../context/StaffContext'
+import { homePath } from '../lib/navigation'
 
 export function LoginPage() {
   const { staff, login } = useStaff()
@@ -11,8 +12,7 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false)
 
   if (staff) {
-    const defaultLanding = staff.role === 'collector' ? '/subscribers' : '/'
-    const from = (location.state as { from?: string })?.from ?? defaultLanding
+    const from = (location.state as { from?: string })?.from ?? homePath(staff)
     return <Navigate to={from} replace />
   }
 
