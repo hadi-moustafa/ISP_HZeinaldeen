@@ -192,3 +192,13 @@ Follow-up to a full review of debt / forgive / postpone / company dues / import 
 - `subscriber_id` is `ON DELETE SET NULL` with a `subscriber_name` snapshot, so history and metrics survive a subscriber delete.
 - **Tasks for non-subscribers** (2026-10-03, no migration): the task form has a Subscriber / Not a subscriber toggle. Not a subscriber = `subscriber_id NULL` + a hand-typed name in `subscriber_name` (same shape as a task whose subscriber was deleted). Product orders on such a task still confirm through `confirm_task_product_order()` → `log_product_sale()` with a NULL subscriber; "paid now 0" just makes it an unpaid sale on the products page (no account to collect through Pay), and the confirm hint says so (`TaskOrders forSubscriber`).
 - **Admin Tasks page UI matches the subscriber list**: indigo title bar + round `+`, pill search (name / phone / address / problem), count chips To do / Done / Can't do, compact rows (`TaskRow`: priority/status dot, name, problem · technician) that expand on tap to the full details and order confirm. The old 5-box metrics grid became the chip counts + "orders to confirm" pill + "done this month" line.
+
+## Collection feedback (2026-10-03, migration 0036)
+
+- **Pay modal** (`PaymentModal.tsx`) has an optional "Feedback for the admin" textarea, separate from the payment Notes. Saved to `collection_feedback` (subscriber + `subscriber_name` snapshot, collector picked in the modal, staff) via `saveFeedback()`:
+  - with a payment → after the payment lines succeed;
+  - with no lines selected → Save stores just the feedback (not home / refused / complaint), no payment;
+  - with a postpone → after the postpone.
+  - `feedbackSaved` guards against a duplicate when a partly-failed save is retried; a feedback failure after a successful payment/postpone keeps the modal open with a clear message instead of letting a retry repeat the money action.
+- **Review page** `/admin/feedback` (`FeedbackPage.tsx`, nav "Finance & activity" → Collection Feedback, hidden from collectors like Activity Log): subscriber-list style, search, To review / Reviewed chips, mark reviewed (`reviewed_at`/`reviewed_by`) or undo, delete. All logged to the activity log (`entity_type` `feedback`).
+- Not covered: the offline `/field` page's payment form has no feedback field (it'd need a Dexie queue entry).

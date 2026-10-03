@@ -19,6 +19,7 @@ import { movementLineTotal } from '../../types/movements'
 import { updateSubscriberFields } from '../../lib/api/subscribers'
 import { listMonthlyLog } from '../../lib/api/reports'
 import { logActivity } from '../../lib/api/activityLog'
+import { createCollectionFeedback } from '../../lib/api/collectionFeedback'
 import { openWhatsApp, paymentSummaryMessage, useMessageTemplates } from '../../lib/whatsapp'
 import { round2 } from '../../lib/money'
 import { useStaff } from '../../context/StaffContext'
@@ -113,6 +114,11 @@ export function PaymentModal({
 
   const [date, setDate] = useState(todayLocal())
   const [notes, setNotes] = useState('')
+  // Collection feedback (for the admin's Feedback page), separate from the
+  // payment note. feedbackSaved guards against saving it twice when a
+  // partly-failed save is retried.
+  const [feedback, setFeedback] = useState('')
+  const [feedbackSaved, setFeedbackSaved] = useState(false)
   const [method, setMethod] = useState<'cash' | 'whish'>('cash')
   const [collectorId, setCollectorId] = useState('')
 
@@ -153,6 +159,8 @@ export function PaymentModal({
     setServicePriceToggle(false)
     setDate(todayLocal())
     setNotes('')
+    setFeedback('')
+    setFeedbackSaved(false)
     setMethod('cash')
     setCollectorId(subscriber.default_collector_id ?? '')
     setPostponeOpen(false)
@@ -262,12 +270,56 @@ export function PaymentModal({
         'invoice',
         log.invoice_id,
       )
+      try {
+        await saveFeedback(activeSub)
+      } catch (err) {
+        // Already postponed -- don't let a retry postpone again.
+        setPostponeOpen(false)
+        setError(`Postponed, but the feedback wasn't saved: ${err instanceof Error ? err.message : 'unknown error'}`)
+        onChanged()
+        return
+      }
       onClose()
       onChanged()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to postpone')
     } finally {
       setPostponing(false)
+    }
+  }
+
+  async function saveFeedback(sub: SubscriberWithRelations) {
+    const text = feedback.trim()
+    if (!text || feedbackSaved) return
+    const id = await createCollectionFeedback({
+      subscriberId: sub.id,
+      subscriberName: sub.name,
+      feedback: text,
+      collectorId: collectorId || null,
+      staffId: staff?.id ?? null,
+    })
+    setFeedbackSaved(true)
+    logActivity(
+      staff?.id ?? null,
+      `${staff?.username ?? 'Someone'} left collection feedback for ${sub.name}: ${text}`,
+      'feedback',
+      id,
+    )
+  }
+
+  // Feedback with nothing to pay (not home, refused, a complaint): saved on
+  // its own, no payment lines touched.
+  async function saveFeedbackOnly() {
+    if (!activeSub) return
+    setSaving(true)
+    setError(null)
+    try {
+      await saveFeedback(activeSub)
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save feedback')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -293,7 +345,11 @@ export function PaymentModal({
   function handleSaveClick(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (selectedLines.size === 0) {
-      setError('Select at least one of Service, Debt, or Products to pay.')
+      if (feedback.trim()) {
+        void saveFeedbackOnly()
+        return
+      }
+      setError('Select at least one of Service, Debt, or Products to pay, or write a feedback.')
       return
     }
     const notify = (e.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'notify'
@@ -378,6 +434,16 @@ export function PaymentModal({
         setSelectedLines(new Set([...selectedLines].filter((l) => !succeeded.has(l))))
         setFlaggedLines(null)
         setError(`${firstError} -- lines already saved won't be repeated; fix and retry the rest.`)
+        onChanged()
+        return
+      }
+
+      try {
+        await saveFeedback(sub)
+      } catch (err) {
+        // The payment went through; only the feedback failed -- keep the
+        // modal open so it can be retried (paid lines won't repeat).
+        setError(`Payment saved, but the feedback wasn't: ${err instanceof Error ? err.message : 'unknown error'}`)
         onChanged()
         return
       }
@@ -724,6 +790,14 @@ export function PaymentModal({
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Notes (optional)"
             className={`${inputClass} mb-4`}
+          />
+          <textarea
+            value={feedback}
+            onChange={(e) => setFeedback(e.target.value)}
+            disabled={feedbackSaved}
+            rows={2}
+            placeholder="Feedback for the admin (optional) -- complaint, problem, what they said"
+            className={`${inputClass} mb-4 disabled:opacity-60`}
           />
           <select
             value={method}

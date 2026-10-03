@@ -66,7 +66,10 @@ const groups: { key: string; heading: string; links: NavLinkItem[] }[] = [
   {
     key: 'finance',
     heading: 'Finance & activity',
-    links: [{ to: '/admin/activity-log', label: 'Activity Log', collectorHidden: true }],
+    links: [
+      { to: '/admin/feedback', label: 'Collection Feedback', collectorHidden: true },
+      { to: '/admin/activity-log', label: 'Activity Log', collectorHidden: true },
+    ],
   },
 ]
 

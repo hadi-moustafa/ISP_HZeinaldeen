@@ -15,6 +15,7 @@ import { ProductsHubPage } from './pages/admin/ProductsHubPage'
 import { SubscriberToolsPage } from './pages/admin/SubscriberToolsPage'
 import { WhatsAppMessagesPage } from './pages/admin/WhatsAppMessagesPage'
 import { ActivityLogPage } from './pages/admin/ActivityLogPage'
+import { FeedbackPage } from './pages/admin/FeedbackPage'
 import { TasksPage } from './pages/admin/TasksPage'
 import { TechniciansPage } from './pages/admin/TechniciansPage'
 import { MyTasksPage } from './pages/MyTasksPage'
@@ -57,6 +58,7 @@ function App() {
             <Route path="subscriber-tools" element={<SubscriberToolsPage />} />
             <Route path="whatsapp-messages" element={<WhatsAppMessagesPage />} />
             <Route path="activity-log" element={<ActivityLogPage />} />
+            <Route path="feedback" element={<FeedbackPage />} />
             <Route
               path="tasks"
               element={
