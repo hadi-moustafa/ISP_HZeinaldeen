@@ -176,7 +176,7 @@ function TaskCard({
           onClick={() => setOrderOpen(true)}
           className="flex items-center gap-1 text-xs font-semibold text-blue-600"
         >
-          <PackagePlus size={14} /> Order a product for this subscriber
+          <PackagePlus size={14} /> Order a product
         </button>
       )}
 

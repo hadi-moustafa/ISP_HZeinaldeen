@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Plus, Pencil, Trash2, RotateCcw } from 'lucide-react'
+import { Plus, Pencil, Trash2, RotateCcw, Search, ChevronDown } from 'lucide-react'
 import { useStaff } from '../../context/StaffContext'
 import {
   listUnfinishedTasks,
@@ -16,16 +16,18 @@ import {
 } from '../../lib/api/tasks'
 import { listTechnicians, type TechnicianStaff } from '../../lib/api/staff'
 import { logActivity } from '../../lib/api/activityLog'
-import { compareTasks, orderLabel, formatDateTime, STATUS_LABEL } from '../../lib/tasks'
+import { compareTasks, effectivePriority, orderLabel, formatDateTime, STATUS_LABEL, PRIORITY_LABEL } from '../../lib/tasks'
 import type { TaskInput, TaskPriority, TaskProductOrder, TaskWithRelations } from '../../types/tasks'
 import { Modal } from '../../components/Modal'
 import { TaskBody, TaskHeading, TaskMeta, TaskOrders } from '../../components/tasks/TaskDetails'
-import { inputClass, primaryButtonClass, secondaryButtonClass, cardClass } from '../../lib/uiClasses'
+import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../lib/uiClasses'
 
-type Tab = 'todo' | 'finished'
-type FinishedFilter = 'all' | 'done' | 'cant_do'
+type Tab = 'todo' | 'done' | 'cant_do'
 
 interface FormState {
+  // false = a job for someone who isn't a subscriber: name typed by hand,
+  // no subscriber link (and product orders aren't charged to an account).
+  forSubscriber: boolean
   subscriberId: string | null
   subscriberName: string
   address: string
@@ -38,6 +40,7 @@ interface FormState {
 }
 
 const emptyForm: FormState = {
+  forSubscriber: true,
   subscriberId: null,
   subscriberName: '',
   address: '',
@@ -60,11 +63,85 @@ function subscriberAddress(s: TaskSubscriberOption) {
   return parts.join(', ')
 }
 
-function Metric({ label, value, tone }: { label: string; value: number; tone: string }) {
+// Same compact row as the subscriber list: a status dot, name + problem,
+// and the actions. Tap the text to open the full task. Module-level so a
+// page re-render never resets which rows are open.
+function TaskRow({
+  task,
+  onEdit,
+  onReopen,
+  onDelete,
+  onConfirmOrder,
+  onRejectOrder,
+}: {
+  task: TaskWithRelations
+  onEdit: (t: TaskWithRelations) => void
+  onReopen: (t: TaskWithRelations) => void
+  onDelete: (t: TaskWithRelations) => void
+  onConfirmOrder: (t: TaskWithRelations, o: TaskProductOrder, total: number | null, paid: number) => Promise<void>
+  onRejectOrder: (t: TaskWithRelations, o: TaskProductOrder) => Promise<void>
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const finishedTask = task.status === 'done' || task.status === 'cant_do'
+  const priority = effectivePriority(task)
+  const pendingOrders = task.task_product_orders.filter((o) => o.status === 'requested').length
+  const dot = finishedTask
+    ? task.status === 'done'
+      ? 'bg-green-500'
+      : 'bg-red-500'
+    : priority === 'urgent'
+      ? 'bg-red-500'
+      : priority === 'high'
+        ? 'bg-orange-500'
+        : 'bg-neutral-300'
+
   return (
     <div className="rounded-xl border border-neutral-200 bg-white px-3 py-2">
-      <p className={`text-xl font-bold tabular-nums ${tone}`}>{value}</p>
-      <p className="text-xs text-neutral-500">{label}</p>
+      <div className="flex items-center gap-2">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} title={finishedTask ? STATUS_LABEL[task.status] : PRIORITY_LABEL[priority]} />
+        <button onClick={() => setExpanded((v) => !v)} aria-expanded={expanded} className="min-w-0 flex-1 text-left">
+          <p className="truncate text-sm font-semibold text-neutral-900">
+            {task.subscriber_name}
+            {task.status === 'half_done' && (
+              <span className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-[9px] font-medium uppercase text-amber-700">half done</span>
+            )}
+            {pendingOrders > 0 && (
+              <span className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-[9px] font-medium uppercase text-amber-700">
+                {pendingOrders} order{pendingOrders > 1 ? 's' : ''}
+              </span>
+            )}
+          </p>
+          <p className="truncate text-xs text-neutral-500">
+            {task.problem} · {task.assigned_staff?.username ?? 'any technician'}
+          </p>
+        </button>
+        <ChevronDown size={14} className={`shrink-0 text-neutral-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+        {finishedTask ? (
+          <button onClick={() => onReopen(task)} title="Reopen" className="shrink-0 rounded-full bg-neutral-100 p-2 text-neutral-600">
+            <RotateCcw size={14} />
+          </button>
+        ) : (
+          <button onClick={() => onEdit(task)} title="Edit" className="shrink-0 rounded-full bg-neutral-100 p-2 text-neutral-600">
+            <Pencil size={14} />
+          </button>
+        )}
+        <button onClick={() => onDelete(task)} title="Delete" className="shrink-0 rounded-full bg-red-50 p-2 text-red-600">
+          <Trash2 size={14} />
+        </button>
+      </div>
+      {expanded && (
+        <div className="mt-2 space-y-2 border-t border-neutral-100 pt-2">
+          <TaskHeading task={task} linkSubscriber />
+          <TaskBody task={task} />
+          <TaskOrders
+            orders={task.task_product_orders}
+            forSubscriber={task.subscriber_id != null}
+            onConfirm={(o, total, paid) => onConfirmOrder(task, o, total, paid)}
+            onReject={(o) => onRejectOrder(task, o)}
+          />
+          <TaskMeta task={task} />
+        </div>
+      )}
     </div>
   )
 }
@@ -72,7 +149,7 @@ function Metric({ label, value, tone }: { label: string; value: number; tone: st
 export function TasksPage() {
   const { staff } = useStaff()
   const [tab, setTab] = useState<Tab>('todo')
-  const [finishedFilter, setFinishedFilter] = useState<FinishedFilter>('all')
+  const [search, setSearch] = useState('')
   const [unfinished, setUnfinished] = useState<TaskWithRelations[]>([])
   const [finished, setFinished] = useState<TaskWithRelations[]>([])
   const [totals, setTotals] = useState({ done: 0, cantDo: 0 })
@@ -112,11 +189,15 @@ export function TasksPage() {
     listTaskSubscriberOptions().then(setSubscribers).catch(() => {})
   }, [])
 
-  const sortedUnfinished = useMemo(() => [...unfinished].sort(compareTasks), [unfinished])
-  const visibleFinished = useMemo(
-    () => (finishedFilter === 'all' ? finished : finished.filter((t) => t.status === finishedFilter)),
-    [finished, finishedFilter],
-  )
+  // Search by name, phone, address or problem, within the selected chip.
+  const visible = useMemo(() => {
+    const rows = tab === 'todo' ? [...unfinished].sort(compareTasks) : finished.filter((t) => t.status === tab)
+    const term = search.trim().toLowerCase()
+    if (!term) return rows
+    return rows.filter((t) =>
+      [t.subscriber_name, t.phone, t.address, t.problem].some((v) => (v ?? '').toLowerCase().includes(term)),
+    )
+  }, [tab, unfinished, finished, search])
 
   const metrics = useMemo(() => {
     const month = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Beirut' }).slice(0, 7)
@@ -149,6 +230,7 @@ export function TasksPage() {
   function openEdit(task: TaskWithRelations) {
     setEditing(task)
     setForm({
+      forSubscriber: task.subscriber_id != null,
       subscriberId: task.subscriber_id,
       subscriberName: task.subscriber_name,
       address: task.address ?? '',
@@ -180,11 +262,12 @@ export function TasksPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (!staff) return
-    if (!form.subscriberId && !editing) return setFormError('Pick a subscriber.')
+    if (form.forSubscriber && !form.subscriberId) return setFormError('Pick a subscriber.')
+    if (!form.subscriberName.trim()) return setFormError('Enter a name.')
     if (!form.problem.trim()) return setFormError('Describe the problem.')
     const input: TaskInput = {
-      subscriber_id: form.subscriberId,
-      subscriber_name: form.subscriberName,
+      subscriber_id: form.forSubscriber ? form.subscriberId : null,
+      subscriber_name: form.subscriberName.trim(),
       address: form.address.trim() || null,
       phone: form.phone.trim() || null,
       problem: form.problem.trim(),
@@ -276,133 +359,117 @@ export function TasksPage() {
     }
   }
 
-  function renderTask(task: TaskWithRelations) {
-    const finishedTask = task.status === 'done' || task.status === 'cant_do'
-    return (
-      <div key={task.id} className="space-y-2 rounded-xl border border-neutral-200 bg-white p-3">
-        <div className="flex items-start gap-2">
-          <div className="min-w-0 flex-1">
-            <TaskHeading task={task} linkSubscriber />
-          </div>
-          {finishedTask ? (
-            <button onClick={() => handleReopen(task)} title="Reopen" className="rounded-full bg-neutral-100 p-2 text-neutral-600">
-              <RotateCcw size={14} />
-            </button>
-          ) : (
-            <button onClick={() => openEdit(task)} title="Edit" className="rounded-full bg-neutral-100 p-2 text-neutral-600">
-              <Pencil size={14} />
-            </button>
-          )}
-          <button onClick={() => handleDelete(task)} title="Delete" className="rounded-full bg-red-50 p-2 text-red-600">
-            <Trash2 size={14} />
-          </button>
-        </div>
-        <TaskBody task={task} />
-        <TaskOrders
-          orders={task.task_product_orders}
-          onConfirm={(o, total, paid) => handleConfirmOrder(task, o, total, paid)}
-          onReject={(o) => handleRejectOrder(task, o)}
-        />
-        <TaskMeta task={task} />
-      </div>
-    )
-  }
+  const chips: [Tab, string, number][] = [
+    ['todo', 'To do', unfinished.length],
+    ['done', 'Done', totals.done],
+    ['cant_do', "Can't do", totals.cantDo],
+  ]
 
   return (
     <div>
-      <div className="mb-3 flex items-center gap-2">
-        <h1 className="text-lg font-semibold text-neutral-900">Tasks</h1>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="h-5 w-1 rounded-full bg-indigo-500" />
+          <h1 className="text-lg font-bold text-neutral-900">Tasks</h1>
+        </div>
         <button
           onClick={openCreate}
-          className="ml-auto flex items-center gap-1 rounded-full bg-blue-600 px-3 py-2 text-sm font-semibold text-white"
+          title="New task"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-500 text-white shadow-sm active:bg-indigo-600"
         >
-          <Plus size={16} /> New task
+          <Plus size={18} strokeWidth={2.5} />
         </button>
       </div>
 
-      <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
-        <Metric label="To do" value={unfinished.length} tone="text-neutral-900" />
-        <Metric label="Done this month" value={metrics.doneThisMonth} tone="text-emerald-600" />
-        <Metric label="Done in total" value={totals.done} tone="text-emerald-700" />
-        <Metric label="Can't be done" value={totals.cantDo} tone="text-red-600" />
-        <Metric label="Orders to confirm" value={metrics.pendingOrders} tone="text-amber-600" />
+      <div className="mb-3 flex items-center rounded-full bg-white px-3 shadow-sm">
+        <Search size={16} className="mr-2 shrink-0 text-neutral-400" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search name, phone, address, problem…"
+          className="min-w-0 flex-1 bg-transparent py-2.5 text-sm text-neutral-900 outline-none"
+        />
       </div>
 
-      <div className="mb-3 flex gap-1 rounded-full bg-neutral-100 p-1">
-        {(
-          [
-            ['todo', `To do (${unfinished.length})`],
-            ['finished', `Finished (${finished.length})`],
-          ] as const
-        ).map(([key, label]) => (
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        {chips.map(([key, label, count]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`flex-1 rounded-full px-3 py-1.5 text-xs font-semibold ${
-              tab === key ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'
+            className={`shrink-0 rounded-full px-3 py-2 text-sm font-medium shadow-sm ${
+              tab === key ? 'bg-indigo-500 text-white' : 'bg-white text-neutral-700'
             }`}
           >
-            {label}
+            {label} {count}
           </button>
         ))}
+        {metrics.pendingOrders > 0 && (
+          <span className="ml-auto shrink-0 rounded-full bg-amber-100 px-3 py-1.5 text-sm font-bold text-amber-700">
+            {metrics.pendingOrders} order{metrics.pendingOrders > 1 ? 's' : ''} to confirm
+          </span>
+        )}
       </div>
+      <p className="mb-3 text-xs text-neutral-500">{metrics.doneThisMonth} done this month</p>
 
       {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
       {loading && <p className="text-sm text-neutral-500">Loading…</p>}
 
-      {tab === 'todo' && (
-        <div className="space-y-2">
-          {!loading && sortedUnfinished.length === 0 && (
-            <p className={`${cardClass} text-sm text-neutral-500`}>No open tasks. Tap "New task" to add one.</p>
-          )}
-          {sortedUnfinished.map(renderTask)}
-        </div>
+      <div className="space-y-1.5">
+        {visible.map((task) => (
+          <TaskRow
+            key={task.id}
+            task={task}
+            onEdit={openEdit}
+            onReopen={handleReopen}
+            onDelete={handleDelete}
+            onConfirmOrder={handleConfirmOrder}
+            onRejectOrder={handleRejectOrder}
+          />
+        ))}
+        {!loading && visible.length === 0 && (
+          <p className="text-sm text-neutral-500">
+            {search.trim() ? 'No tasks match this search.' : tab === 'todo' ? 'No open tasks. Tap + to add one.' : 'Nothing here yet.'}
+          </p>
+        )}
+      </div>
+      {tab !== 'todo' && finished.length >= 200 && (
+        <p className="mt-2 text-xs text-neutral-400">Showing the latest 200 finished tasks.</p>
       )}
 
-      {tab === 'finished' && (
-        <>
-          <div className="mb-2 flex gap-1.5">
+      <Modal open={formOpen} onClose={() => setFormOpen(false)} title={editing ? 'Edit task' : 'New task'}>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="flex gap-1 rounded-full bg-neutral-100 p-1">
             {(
               [
-                ['all', 'All'],
-                ['done', 'Done'],
-                ['cant_do', "Can't be done"],
+                [true, 'Subscriber'],
+                [false, 'Not a subscriber'],
               ] as const
-            ).map(([key, label]) => (
+            ).map(([value, label]) => (
               <button
-                key={key}
-                onClick={() => setFinishedFilter(key)}
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
-                  finishedFilter === key ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-neutral-600'
+                key={label}
+                type="button"
+                onClick={() =>
+                  setForm((f) =>
+                    f.forSubscriber === value
+                      ? f
+                      : { ...f, forSubscriber: value, subscriberId: null, subscriberName: '', address: '', phone: '' },
+                  )
+                }
+                className={`flex-1 rounded-full px-3 py-1.5 text-xs font-semibold ${
+                  form.forSubscriber === value ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'
                 }`}
               >
                 {label}
               </button>
             ))}
           </div>
-          <div className="space-y-2">
-            {!loading && visibleFinished.length === 0 && (
-              <p className={`${cardClass} text-sm text-neutral-500`}>Nothing finished yet.</p>
-            )}
-            {visibleFinished.map(renderTask)}
-          </div>
-          {finished.length >= 200 && (
-            <p className="mt-2 text-xs text-neutral-400">Showing the latest 200 finished tasks.</p>
-          )}
-        </>
-      )}
 
-      <Modal open={formOpen} onClose={() => setFormOpen(false)} title={editing ? 'Edit task' : 'New task'}>
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-neutral-700">Subscriber</label>
-            {form.subscriberName && (
-              <p className="mb-1.5 text-sm font-semibold text-neutral-900">
-                {form.subscriberName}
-                {!form.subscriberId && editing ? ' (deleted subscriber)' : ''}
-              </p>
-            )}
+          {form.forSubscriber ? (
             <div>
+              <label className="mb-1 block text-sm font-medium text-neutral-700">Subscriber</label>
+              {form.subscriberName && (
+                <p className="mb-1.5 text-sm font-semibold text-neutral-900">{form.subscriberName}</p>
+              )}
               <input
                 value={subscriberSearch}
                 onChange={(e) => setSubscriberSearch(e.target.value)}
@@ -425,7 +492,18 @@ export function TasksPage() {
                 </div>
               )}
             </div>
-          </div>
+          ) : (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-neutral-700">Name</label>
+              <input
+                value={form.subscriberName}
+                onChange={(e) => setForm((f) => ({ ...f, subscriberName: e.target.value }))}
+                placeholder="Who the job is for"
+                required
+                className={inputClass}
+              />
+            </div>
+          )}
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>

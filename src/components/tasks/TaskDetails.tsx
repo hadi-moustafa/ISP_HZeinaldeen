@@ -108,13 +108,16 @@ const ORDER_STATUS_LABEL = { requested: 'Waiting for admin', sold: 'Confirmed', 
 
 // Admin's confirm form for one pending order: price (blank = normal price,
 // bundles need one) and cash taken now (0 = goes on the subscriber's
-// account, collected through Pay).
+// account, collected through Pay; for a non-subscriber it's just an unpaid
+// sale on the products page).
 function ConfirmOrderRow({
   order,
+  forSubscriber,
   onConfirm,
   onReject,
 }: {
   order: TaskProductOrder
+  forSubscriber: boolean
   onConfirm: (totalAmount: number | null, amountPaid: number) => Promise<void>
   onReject: () => Promise<void>
 }) {
@@ -175,7 +178,7 @@ function ConfirmOrderRow({
         value={paid}
         onChange={(e) => setPaid(e.target.value)}
         className="w-24 rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
-        title="Paid now (0 = add to the subscriber's account)"
+        title={forSubscriber ? "Paid now (0 = add to the subscriber's account)" : 'Paid now (0 = unpaid)'}
       />
       <button
         disabled={busy || (isBundle && price.trim() === '')}
@@ -187,18 +190,23 @@ function ConfirmOrderRow({
       <button onClick={() => setOpen(false)} className="text-xs text-neutral-500">
         Cancel
       </button>
-      <p className="w-full text-xs text-neutral-400">Price (blank = normal) · paid now (0 = add to their account)</p>
+      <p className="w-full text-xs text-neutral-400">
+        Price (blank = normal) · paid now (0 = {forSubscriber ? 'add to their account' : 'unpaid'})
+      </p>
     </div>
   )
 }
 
 export function TaskOrders({
   orders,
+  forSubscriber = true,
   onDelete,
   onConfirm,
   onReject,
 }: {
   orders: TaskProductOrder[]
+  // false = the task isn't for a subscriber (no account to charge).
+  forSubscriber?: boolean
   // Technician: withdraw a pending request.
   onDelete?: (order: TaskProductOrder) => void
   // Admin: turn a pending request into a real sale, or reject it.
@@ -227,6 +235,7 @@ export function TaskOrders({
             {o.status === 'requested' && onConfirm && onReject && (
               <ConfirmOrderRow
                 order={o}
+                forSubscriber={forSubscriber}
                 onConfirm={(total, paid) => onConfirm(o, total, paid)}
                 onReject={() => onReject(o)}
               />
