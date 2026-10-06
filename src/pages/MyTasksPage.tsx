@@ -17,7 +17,7 @@ import { compareTasks, formatDateTime, orderLabel, STATUS_LABEL } from '../lib/t
 import type { TaskProductOrder, TaskStatus, TaskWithRelations } from '../types/tasks'
 import type { Product } from '../types/reference'
 import { AppHeader } from '../components/AppHeader'
-import { TaskBody, TaskHeading, TaskMeta, TaskOrders } from '../components/tasks/TaskDetails'
+import { TaskBody, TaskHeading, TaskMapPin, TaskMeta, TaskOrders } from '../components/tasks/TaskDetails'
 import { cardClass } from '../lib/uiClasses'
 
 function TaskCard({
@@ -140,7 +140,12 @@ function TaskCard({
 
   return (
     <div className="space-y-2 rounded-xl border border-neutral-200 bg-white p-3">
-      <TaskHeading task={task} />
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <TaskHeading task={task} />
+        </div>
+        <TaskMapPin task={task} />
+      </div>
       <TaskBody task={{ ...task, report: null }} />
       <TaskOrders orders={task.task_product_orders} onDelete={removeOrder} />
 
@@ -336,7 +341,12 @@ export function MyTasksPage() {
                 <div className="mt-1.5 space-y-1.5">
                   {finished.map((task) => (
                     <div key={task.id} className="space-y-1.5 rounded-xl border border-neutral-200 bg-white p-3">
-                      <TaskHeading task={task} />
+                      <div className="flex items-start gap-2">
+                        <div className="min-w-0 flex-1">
+                          <TaskHeading task={task} />
+                        </div>
+                        <TaskMapPin task={task} />
+                      </div>
                       <TaskBody task={task} />
                       <TaskOrders orders={task.task_product_orders} />
                       <TaskMeta task={task} />

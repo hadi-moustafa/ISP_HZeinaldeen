@@ -81,3 +81,24 @@ export function orderLabel(o: TaskProductOrder) {
   const unit = o.products?.product_type === 'cable' ? ' m' : ''
   return `${name} × ${o.quantity}${unit}`
 }
+
+// Turns what the admin pasted into a link that opens a map: a full link
+// (Google Maps share links like maps.app.goo.gl/..., or any http(s) map
+// link) as is, a link missing its https:// gets it, and bare coordinates
+// ("33.89, 35.50") become a Google Maps search. On a phone, Google Maps
+// links open the Google Maps app when it's installed. Returns null for
+// anything that isn't one of these.
+export function mapsLink(raw: string): string | null {
+  const text = raw.trim()
+  if (!text) return null
+  const coords = text.match(/^(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)$/)
+  if (coords) return `https://www.google.com/maps/search/?api=1&query=${coords[1]},${coords[2]}`
+  const withScheme = /^https?:\/\//i.test(text) ? text : /^[\w-]+(\.[\w-]+)+\//.test(text) ? `https://${text}` : null
+  if (!withScheme) return null
+  try {
+    const url = new URL(withScheme)
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null
+  } catch {
+    return null
+  }
+}

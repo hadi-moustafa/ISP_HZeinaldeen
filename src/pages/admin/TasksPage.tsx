@@ -22,6 +22,7 @@ import {
   effectivePriority,
   isCreatedToday,
   isUnfinishedTask,
+  mapsLink,
   orderLabel,
   formatDateTime,
   STATUS_CLASS,
@@ -30,7 +31,7 @@ import {
 } from '../../lib/tasks'
 import type { TaskInput, TaskPriority, TaskProductOrder, TaskWithRelations } from '../../types/tasks'
 import { Modal } from '../../components/Modal'
-import { TaskBody, TaskMeta, TaskOrders } from '../../components/tasks/TaskDetails'
+import { TaskBody, TaskMapPin, TaskMeta, TaskOrders } from '../../components/tasks/TaskDetails'
 import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../lib/uiClasses'
 
 // Each metric box doubles as a filter for the list below it.
@@ -44,6 +45,7 @@ interface FormState {
   subscriberName: string
   address: string
   phone: string
+  locationUrl: string
   problem: string
   possibleFixes: string
   notes: string
@@ -57,6 +59,7 @@ const emptyForm: FormState = {
   subscriberName: '',
   address: '',
   phone: '',
+  locationUrl: '',
   problem: '',
   possibleFixes: '',
   notes: '',
@@ -144,6 +147,7 @@ function TaskRow({
           </p>
         </button>
         <ChevronDown size={14} className={`shrink-0 text-neutral-400 transition-transform ${tier > 0 ? 'rotate-180' : ''}`} />
+        <TaskMapPin task={task} />
         {finishedTask ? (
           <button onClick={(e) => (e.stopPropagation(), onReopen(task))} title="Reopen" className="shrink-0 rounded-full bg-neutral-100 p-2 text-neutral-600">
             <RotateCcw size={14} />
@@ -305,6 +309,7 @@ export function TasksPage() {
       subscriberName: task.subscriber_name,
       address: task.address ?? '',
       phone: task.phone ?? '',
+      locationUrl: task.location_url ?? '',
       problem: task.problem,
       possibleFixes: task.possible_fixes ?? '',
       notes: task.notes ?? '',
@@ -335,11 +340,15 @@ export function TasksPage() {
     if (form.forSubscriber && !form.subscriberId) return setFormError('Pick a subscriber.')
     if (!form.subscriberName.trim()) return setFormError('Enter a name.')
     if (!form.problem.trim()) return setFormError('Describe the problem.')
+    const locationUrl = mapsLink(form.locationUrl)
+    if (form.locationUrl.trim() && !locationUrl)
+      return setFormError('The location must be a map link (e.g. a Google Maps share link) or coordinates like 33.89, 35.50.')
     const input: TaskInput = {
       subscriber_id: form.forSubscriber ? form.subscriberId : null,
       subscriber_name: form.subscriberName.trim(),
       address: form.address.trim() || null,
       phone: form.phone.trim() || null,
+      location_url: locationUrl,
       problem: form.problem.trim(),
       possible_fixes: form.possibleFixes.trim() || null,
       notes: form.notes.trim() || null,
@@ -598,6 +607,20 @@ export function TasksPage() {
                 className={inputClass}
               />
             </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-neutral-700">Location link</label>
+            <input
+              value={form.locationUrl}
+              onChange={(e) => setForm((f) => ({ ...f, locationUrl: e.target.value }))}
+              inputMode="url"
+              placeholder="Paste a Google Maps link (optional)"
+              className={inputClass}
+            />
+            <p className="mt-1 text-xs text-neutral-400">
+              In Google Maps: drop a pin → Share → Copy link. Coordinates (33.89, 35.50) work too.
+            </p>
           </div>
 
           <div>

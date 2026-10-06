@@ -22,6 +22,8 @@ export interface Task {
   subscriber_name: string
   address: string | null
   phone: string | null
+  // Map link for where the job is (e.g. a Google Maps share link).
+  location_url: string | null
   problem: string
   possible_fixes: string | null
   notes: string | null
@@ -47,6 +49,7 @@ export interface TaskInput {
   subscriber_name: string
   address: string | null
   phone: string | null
+  location_url: string | null
   problem: string
   possible_fixes: string | null
   notes: string | null

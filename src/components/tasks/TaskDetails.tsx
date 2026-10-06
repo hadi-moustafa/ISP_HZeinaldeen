@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { MapPin, Phone, Check, X } from 'lucide-react'
+import { MapPin, MapPinned, Phone, Check, X } from 'lucide-react'
 import type { TaskProductOrder, TaskWithRelations } from '../../types/tasks'
 import {
   effectivePriority,
@@ -13,6 +13,25 @@ import {
   STATUS_CLASS,
   STATUS_LABEL,
 } from '../../lib/tasks'
+
+// Round pin button that opens the task's map link -- on a phone, a Google
+// Maps link opens the Google Maps app. Renders nothing without a link.
+export function TaskMapPin({ task }: { task: Pick<TaskWithRelations, 'location_url'> }) {
+  if (!task.location_url) return null
+  return (
+    <a
+      href={task.location_url}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      title="Open location in Google Maps"
+      aria-label="Open location in Google Maps"
+      className="flex shrink-0 items-center justify-center rounded-full bg-blue-50 p-2 text-blue-600"
+    >
+      <MapPinned size={14} />
+    </a>
+  )
+}
 
 // Header of a task card: subscriber, priority (with the auto-bump for a
 // task left from a previous day) and status.
