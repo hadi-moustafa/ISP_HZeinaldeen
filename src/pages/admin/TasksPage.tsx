@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Pencil, Trash2, RotateCcw, Search, ChevronDown, MapPin, Phone, Clock } from 'lucide-react'
+import { Plus, Pencil, Trash2, RotateCcw, Search, ChevronDown, MapPin, MapPinned, Phone, Clock } from 'lucide-react'
 import { useStaff } from '../../context/StaffContext'
 import {
   listUnfinishedTasks,
@@ -611,16 +611,28 @@ export function TasksPage() {
 
           <div>
             <label className="mb-1 block text-sm font-medium text-neutral-700">Location link</label>
-            <input
-              value={form.locationUrl}
-              onChange={(e) => setForm((f) => ({ ...f, locationUrl: e.target.value }))}
-              inputMode="url"
-              placeholder="Paste a Google Maps link (optional)"
-              className={inputClass}
-            />
-            <p className="mt-1 text-xs text-neutral-400">
-              In Google Maps: drop a pin → Share → Copy link. Coordinates (33.89, 35.50) work too.
-            </p>
+            <div className="flex items-center gap-2">
+              <input
+                value={form.locationUrl}
+                onChange={(e) => setForm((f) => ({ ...f, locationUrl: e.target.value }))}
+                inputMode="url"
+                placeholder="Paste a Google Maps link (optional)"
+                className={`${inputClass} min-w-0 flex-1`}
+              />
+              {/* Opens Google Maps (the app, on a phone): to find the place
+                  and copy its link, or -- once a link is pasted -- to
+                  check it points at the right spot. */}
+              <a
+                href={mapsLink(form.locationUrl) ?? 'https://www.google.com/maps'}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Open Google Maps"
+                aria-label="Open Google Maps"
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600"
+              >
+                <MapPinned size={20} />
+              </a>
+            </div>
           </div>
 
           <div>
