@@ -227,7 +227,7 @@ export function AddressesPage() {
       <div className="space-y-3">
         {addresses.map((address) => (
           <div key={address.id} className={cardClass}>
-            <div className="flex items-start justify-between">
+            <div className="ui-stack flex items-start justify-between">
               <p className="font-medium text-neutral-900 dark:text-neutral-100">
                 {address.name}
                 {!address.is_active && (

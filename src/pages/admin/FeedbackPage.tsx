@@ -81,7 +81,7 @@ export function FeedbackPage() {
   return (
     <div>
       <div className="mb-4 flex items-center gap-2">
-        <span className="h-5 w-1 rounded-full bg-indigo-500" />
+        <span className="ui-decor h-5 w-1 rounded-full bg-indigo-500" />
         <h1 className="text-lg font-bold text-neutral-900">Collection feedback</h1>
       </div>
 

@@ -5,6 +5,7 @@ import { Menu, X, LogOut, ChevronDown, ArrowLeft } from 'lucide-react'
 import { useStaff } from '../context/StaffContext'
 import { isAdmin, isCollector, isTechnician } from '../lib/permissions'
 import { homePath, useGoBack } from '../lib/navigation'
+import { DesignSwitch } from './DesignSwitch'
 
 const HeaderActionsContext = createContext<HTMLDivElement | null>(null)
 
@@ -114,7 +115,7 @@ export function AppHeader({ title = 'ISP Manager', children }: { title?: string;
 
   return (
     <HeaderActionsContext.Provider value={actionsNode}>
-      <header className="flex items-center gap-2 border-b border-neutral-200 bg-white px-3 py-3">
+      <header className="app-header flex items-center gap-2 border-b border-neutral-200 bg-white px-3 py-3">
         <button
           onClick={() => setMenuOpen(true)}
           aria-label="Open menu"
@@ -233,6 +234,9 @@ export function AppHeader({ title = 'ISP Manager', children }: { title?: string;
             </div>
 
             <div className="border-t border-neutral-200 px-2 py-3">
+              <div className="pb-3">
+                <DesignSwitch />
+              </div>
               <p className="px-3 pb-2 text-xs text-neutral-400">
                 Signed in as {staff?.username} ({staff?.role})
               </p>

@@ -316,7 +316,7 @@ export function SubscribersListPage() {
 
       <div className="mb-4 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="h-5 w-1 rounded-full bg-indigo-500" />
+          <span className="ui-decor h-5 w-1 rounded-full bg-indigo-500" />
           <h1 className="text-lg font-bold text-neutral-900">List Subscribers</h1>
         </div>
         <Link
@@ -339,7 +339,7 @@ export function SubscribersListPage() {
           </button>
 
           {TEXT_FILTER_FIELDS.includes(filterField) && (
-            <div className="flex flex-1 items-center rounded-full bg-white px-3 shadow-sm dark:bg-neutral-800">
+            <div className="flex min-w-40 flex-1 items-center rounded-full bg-white px-3 shadow-sm dark:bg-neutral-800">
               <Search size={16} className="mr-2 shrink-0 text-neutral-400" />
               <input
                 value={

@@ -444,7 +444,7 @@ export function TasksPage() {
     <div>
       <div className="mb-4 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="h-5 w-1 rounded-full bg-indigo-500" />
+          <span className="ui-decor h-5 w-1 rounded-full bg-indigo-500" />
           <h1 className="text-lg font-bold text-neutral-900">Tasks</h1>
         </div>
         <button

@@ -1,0 +1,372 @@
+/* ==========================================================================
+   NEW DESIGN -- plain white and blue.
+
+   Switched on per device from the menu (Design: Classic / New), which sets
+   data-ui="new" on <html> (src/lib/uiDesign.ts). Nothing here applies in
+   the classic design, and no page has its own copy: every page is
+   re-skinned from this one file.
+
+   How it works: Tailwind builds every colour, corner and text size from
+   CSS variables, so redefining those variables below changes them on
+   every page at once. A few rules after that remove decoration (shadows,
+   accent bars, all-caps labels) and enlarge the smallest text.
+
+   Colours, by meaning -- keep to these:
+     blue   = the app itself: header, buttons, selected things, links
+     green  = paid / done / OK
+     orange = postponed / partial / waiting / warning
+     red    = debt / overdue / error / delete
+     grey   = everything else (text, borders, backgrounds)
+   ========================================================================== */
+
+:root[data-ui='new'] {
+  /* Greys: a cool grey that sits well next to blue. */
+  --color-neutral-50: #f8fafc;
+  --color-neutral-100: #f1f5f9;
+  --color-neutral-200: #e2e8f0;
+  --color-neutral-300: #cbd5e1;
+  --color-neutral-400: #94a3b8;
+  --color-neutral-500: #64748b;
+  --color-neutral-600: #475569;
+  --color-neutral-700: #334155;
+  --color-neutral-800: #1e293b;
+  --color-neutral-900: #0f172a;
+  --color-neutral-950: #020617;
+  --color-gray-50: #f8fafc;
+  --color-gray-100: #f1f5f9;
+  --color-gray-200: #e2e8f0;
+  --color-gray-300: #cbd5e1;
+  --color-gray-400: #94a3b8;
+  --color-gray-500: #64748b;
+  --color-gray-600: #475569;
+  --color-gray-700: #334155;
+  --color-gray-800: #1e293b;
+  --color-gray-900: #0f172a;
+  --color-gray-950: #020617;
+  --color-zinc-50: #f8fafc;
+  --color-zinc-100: #f1f5f9;
+  --color-zinc-200: #e2e8f0;
+  --color-zinc-300: #cbd5e1;
+  --color-zinc-400: #94a3b8;
+  --color-zinc-500: #64748b;
+  --color-zinc-600: #475569;
+  --color-zinc-700: #334155;
+  --color-zinc-800: #1e293b;
+  --color-zinc-900: #0f172a;
+  --color-zinc-950: #020617;
+  --color-stone-50: #f8fafc;
+  --color-stone-100: #f1f5f9;
+  --color-stone-200: #e2e8f0;
+  --color-stone-300: #cbd5e1;
+  --color-stone-400: #94a3b8;
+  --color-stone-500: #64748b;
+  --color-stone-600: #475569;
+  --color-stone-700: #334155;
+  --color-stone-800: #1e293b;
+  --color-stone-900: #0f172a;
+  --color-stone-950: #020617;
+  --color-slate-50: #f8fafc;
+  --color-slate-100: #f1f5f9;
+  --color-slate-200: #e2e8f0;
+  --color-slate-300: #cbd5e1;
+  --color-slate-400: #94a3b8;
+  --color-slate-500: #64748b;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1e293b;
+  --color-slate-900: #0f172a;
+  --color-slate-950: #020617;
+
+  /* Every decorative accent colour becomes the one app blue. */
+  --color-blue-50: #eff6ff;
+  --color-blue-100: #dbeafe;
+  --color-blue-200: #bfdbfe;
+  --color-blue-300: #93c5fd;
+  --color-blue-400: #60a5fa;
+  --color-blue-500: #2563eb;
+  --color-blue-600: #1d4ed8;
+  --color-blue-700: #1e40af;
+  --color-blue-800: #1e3a8a;
+  --color-blue-900: #172554;
+  --color-blue-950: #172554;
+  --color-indigo-50: #eff6ff;
+  --color-indigo-100: #dbeafe;
+  --color-indigo-200: #bfdbfe;
+  --color-indigo-300: #93c5fd;
+  --color-indigo-400: #60a5fa;
+  --color-indigo-500: #2563eb;
+  --color-indigo-600: #1d4ed8;
+  --color-indigo-700: #1e40af;
+  --color-indigo-800: #1e3a8a;
+  --color-indigo-900: #172554;
+  --color-indigo-950: #172554;
+  --color-violet-50: #eff6ff;
+  --color-violet-100: #dbeafe;
+  --color-violet-200: #bfdbfe;
+  --color-violet-300: #93c5fd;
+  --color-violet-400: #60a5fa;
+  --color-violet-500: #2563eb;
+  --color-violet-600: #1d4ed8;
+  --color-violet-700: #1e40af;
+  --color-violet-800: #1e3a8a;
+  --color-violet-900: #172554;
+  --color-violet-950: #172554;
+  --color-purple-50: #eff6ff;
+  --color-purple-100: #dbeafe;
+  --color-purple-200: #bfdbfe;
+  --color-purple-300: #93c5fd;
+  --color-purple-400: #60a5fa;
+  --color-purple-500: #2563eb;
+  --color-purple-600: #1d4ed8;
+  --color-purple-700: #1e40af;
+  --color-purple-800: #1e3a8a;
+  --color-purple-900: #172554;
+  --color-purple-950: #172554;
+  --color-sky-50: #eff6ff;
+  --color-sky-100: #dbeafe;
+  --color-sky-200: #bfdbfe;
+  --color-sky-300: #93c5fd;
+  --color-sky-400: #60a5fa;
+  --color-sky-500: #2563eb;
+  --color-sky-600: #1d4ed8;
+  --color-sky-700: #1e40af;
+  --color-sky-800: #1e3a8a;
+  --color-sky-900: #172554;
+  --color-sky-950: #172554;
+  --color-cyan-50: #eff6ff;
+  --color-cyan-100: #dbeafe;
+  --color-cyan-200: #bfdbfe;
+  --color-cyan-300: #93c5fd;
+  --color-cyan-400: #60a5fa;
+  --color-cyan-500: #2563eb;
+  --color-cyan-600: #1d4ed8;
+  --color-cyan-700: #1e40af;
+  --color-cyan-800: #1e3a8a;
+  --color-cyan-900: #172554;
+  --color-cyan-950: #172554;
+  --color-teal-50: #eff6ff;
+  --color-teal-100: #dbeafe;
+  --color-teal-200: #bfdbfe;
+  --color-teal-300: #93c5fd;
+  --color-teal-400: #60a5fa;
+  --color-teal-500: #2563eb;
+  --color-teal-600: #1d4ed8;
+  --color-teal-700: #1e40af;
+  --color-teal-800: #1e3a8a;
+  --color-teal-900: #172554;
+  --color-teal-950: #172554;
+
+  /* Signal colours: one green, one red (amber/orange stay as the warning colour). */
+  --color-emerald-50: #f0fdf4;
+  --color-emerald-100: #dcfce7;
+  --color-emerald-200: #bbf7d0;
+  --color-emerald-300: #86efac;
+  --color-emerald-400: #4ade80;
+  --color-emerald-500: #22c55e;
+  --color-emerald-600: #16a34a;
+  --color-emerald-700: #15803d;
+  --color-emerald-800: #166534;
+  --color-emerald-900: #14532d;
+  --color-emerald-950: #052e16;
+  --color-green-50: #f0fdf4;
+  --color-green-100: #dcfce7;
+  --color-green-200: #bbf7d0;
+  --color-green-300: #86efac;
+  --color-green-400: #4ade80;
+  --color-green-500: #22c55e;
+  --color-green-600: #16a34a;
+  --color-green-700: #15803d;
+  --color-green-800: #166534;
+  --color-green-900: #14532d;
+  --color-green-950: #052e16;
+  --color-lime-50: #f0fdf4;
+  --color-lime-100: #dcfce7;
+  --color-lime-200: #bbf7d0;
+  --color-lime-300: #86efac;
+  --color-lime-400: #4ade80;
+  --color-lime-500: #22c55e;
+  --color-lime-600: #16a34a;
+  --color-lime-700: #15803d;
+  --color-lime-800: #166534;
+  --color-lime-900: #14532d;
+  --color-lime-950: #052e16;
+  --color-rose-50: #fef2f2;
+  --color-rose-100: #fee2e2;
+  --color-rose-200: #fecaca;
+  --color-rose-300: #fca5a5;
+  --color-rose-400: #f87171;
+  --color-rose-500: #ef4444;
+  --color-rose-600: #dc2626;
+  --color-rose-700: #b91c1c;
+  --color-rose-800: #991b1b;
+  --color-rose-900: #7f1d1d;
+  --color-rose-950: #450a0a;
+  --color-red-50: #fef2f2;
+  --color-red-100: #fee2e2;
+  --color-red-200: #fecaca;
+  --color-red-300: #fca5a5;
+  --color-red-400: #f87171;
+  --color-red-500: #ef4444;
+  --color-red-600: #dc2626;
+  --color-red-700: #b91c1c;
+  --color-red-800: #991b1b;
+  --color-red-900: #7f1d1d;
+  --color-red-950: #450a0a;
+  --color-pink-50: #fef2f2;
+  --color-pink-100: #fee2e2;
+  --color-pink-200: #fecaca;
+  --color-pink-300: #fca5a5;
+  --color-pink-400: #f87171;
+  --color-pink-500: #ef4444;
+  --color-pink-600: #dc2626;
+  --color-pink-700: #b91c1c;
+  --color-pink-800: #991b1b;
+  --color-pink-900: #7f1d1d;
+  --color-pink-950: #450a0a;
+  --color-fuchsia-50: #fef2f2;
+  --color-fuchsia-100: #fee2e2;
+  --color-fuchsia-200: #fecaca;
+  --color-fuchsia-300: #fca5a5;
+  --color-fuchsia-400: #f87171;
+  --color-fuchsia-500: #ef4444;
+  --color-fuchsia-600: #dc2626;
+  --color-fuchsia-700: #b91c1c;
+  --color-fuchsia-800: #991b1b;
+  --color-fuchsia-900: #7f1d1d;
+  --color-fuchsia-950: #450a0a;
+
+  /* Larger text: the smallest sizes were hard to read on a phone. */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.15rem;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.35rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+
+  /* Calmer weights and one corner size for cards and boxes. */
+  --font-weight-extrabold: 700;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 0.75rem;
+}
+
+/* ---- Page ------------------------------------------------------------- */
+
+[data-ui='new'] body {
+  background: #ffffff;
+  color: #0f172a;
+}
+
+/* ---- Header: a solid blue bar with white icons and title --------------- */
+
+[data-ui='new'] .app-header {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+[data-ui='new'] .app-header > button,
+[data-ui='new'] .app-header > a {
+  color: #ffffff;
+}
+[data-ui='new'] .app-header > button:active {
+  background: rgb(255 255 255 / 0.15);
+}
+/* Page buttons placed in the header (e.g. Export): white on blue. */
+[data-ui='new'] .app-header .bg-neutral-900 {
+  background: #ffffff;
+  color: #1d4ed8;
+}
+
+/* ---- No decoration ------------------------------------------------------ */
+
+/* Shadows become a thin grey outline: flat, but every box keeps its edge.
+   (Drawn as a ring, not a border, so nothing moves by a pixel.) */
+[data-ui='new'] .shadow,
+[data-ui='new'] .shadow-sm,
+[data-ui='new'] .shadow-md {
+  box-shadow: 0 0 0 1px #e2e8f0;
+}
+/* Menus, drawer and pop-ups still need to lift off the page. */
+[data-ui='new'] .shadow-lg,
+[data-ui='new'] .shadow-xl {
+  box-shadow: 0 8px 24px rgb(15 23 42 / 0.12);
+}
+
+/* Little coloured bars beside titles -- purely decorative. */
+[data-ui='new'] .ui-decor {
+  display: none;
+}
+
+/* ALL-CAPS, letter-spaced labels read as noise; plain sentence case. */
+[data-ui='new'] .uppercase {
+  text-transform: none;
+}
+[data-ui='new'] .tracking-wide,
+[data-ui='new'] .tracking-wider,
+[data-ui='new'] .tracking-tight {
+  letter-spacing: normal;
+}
+
+/* ---- Readable minimum text size ---------------------------------------- */
+/* Some labels use fixed pixel sizes; lift them to at least 12px. */
+[data-ui='new'] .text-\[8\.5px\],
+[data-ui='new'] .text-\[9px\] {
+  font-size: 11px;
+}
+[data-ui='new'] .text-\[10px\],
+[data-ui='new'] .text-\[10\.5px\],
+[data-ui='new'] .text-\[11px\],
+[data-ui='new'] .text-\[11\.5px\] {
+  font-size: 12.5px;
+}
+[data-ui='new'] .text-\[13px\] {
+  font-size: 15px;
+}
+
+/* ---- Controls ----------------------------------------------------------- */
+
+/* A clear blue outline on whatever has keyboard focus. */
+[data-ui='new'] :focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+[data-ui='new'] input:focus,
+[data-ui='new'] select:focus,
+[data-ui='new'] textarea:focus {
+  border-color: #2563eb;
+}
+
+/* ---- Layout helpers (add these classes in a page to use them) ----------- */
+
+/* Shown only in the new design, e.g. a field's label above its box
+   (src/components/Field.tsx). Hidden in the classic design. */
+.ui-new-only {
+  display: none;
+}
+[data-ui='new'] .ui-new-only {
+  display: block;
+}
+
+/* A "name ... buttons" row that stacks in the new design, so a long name
+   gets the full width instead of being squeezed by the buttons. */
+[data-ui='new'] .ui-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.75rem;
+}
+
+/* Page tabs (Company, Products, Subscriber tools): show every label in
+   full and wrap to a second row if they don't fit, never cut off with "…". */
+[data-ui='new'] .page-tabs {
+  flex-wrap: wrap;
+  border-radius: var(--radius-xl);
+}
+[data-ui='new'] .page-tabs > button {
+  flex: 1 0 auto;
+  overflow: visible;
+  text-overflow: clip;
+  border-radius: var(--radius-lg);
+  font-size: 14px;
+}

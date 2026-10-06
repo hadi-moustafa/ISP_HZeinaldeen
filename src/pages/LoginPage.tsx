@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useStaff } from '../context/StaffContext'
 import { homePath } from '../lib/navigation'
+import { DesignSwitch } from '../components/DesignSwitch'
 
 export function LoginPage() {
   const { staff, login } = useStaff()
@@ -64,6 +65,10 @@ export function LoginPage() {
         >
           {submitting ? 'Signing in…' : 'Sign in'}
         </button>
+
+        <div className="-mx-3 mt-5 border-t border-neutral-100 pt-4">
+          <DesignSwitch />
+        </div>
       </form>
     </div>
   )

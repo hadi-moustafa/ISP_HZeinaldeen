@@ -47,7 +47,7 @@ function ForecastCard({ title, headerRight, children }: { title: string; headerR
     <div className={`${cardClass} mb-4 rounded-2xl`}>
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="h-4.5 w-1 shrink-0 rounded-full bg-teal-600" />
+          <span className="ui-decor h-4.5 w-1 shrink-0 rounded-full bg-teal-600" />
           <h2 className="text-[13px] font-extrabold tracking-tight text-neutral-900">{title}</h2>
         </div>
         {headerRight}

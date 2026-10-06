@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* The switchable new design -- only applies under <html data-ui="new">. */
+@import "./styles/new-design.css";
 
 /* App is light-mode only for now. Tailwind's `dark:` variant defaults to
    matching the OS's prefers-color-scheme; redefining it to a class selector

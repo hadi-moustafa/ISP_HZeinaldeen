@@ -12,7 +12,7 @@ export function PageTabs<T extends string>({
   onChange: (key: T) => void
 }) {
   return (
-    <div className="mb-4 flex gap-1 rounded-full bg-neutral-100 p-1 dark:bg-neutral-800">
+    <div className="page-tabs mb-4 flex gap-1 rounded-full bg-neutral-100 p-1 dark:bg-neutral-800">
       {tabs.map((t) => (
         <button
           key={t.key}
