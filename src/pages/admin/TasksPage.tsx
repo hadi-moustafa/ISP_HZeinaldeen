@@ -96,6 +96,7 @@ function TaskRow({
   onRejectOrder: (t: TaskWithRelations, o: TaskProductOrder) => Promise<void>
 }) {
   const [tier, setTier] = useState<0 | 1 | 2>(0)
+  const toggle = () => setTier((t) => (t === 0 ? 1 : 0))
   const finishedTask = !isUnfinishedTask(task)
   const priority = effectivePriority(task)
   const pendingOrders = task.task_product_orders.filter((o) => o.status === 'requested').length
@@ -111,13 +112,11 @@ function TaskRow({
 
   return (
     <div className="rounded-xl border border-neutral-200 bg-white px-3 py-2">
-      <div className="flex items-center gap-2">
+      {/* The whole header row toggles (dot, text, chevron, empty space);
+          the action buttons stop the tap from reaching it. */}
+      <div onClick={toggle} className="flex cursor-pointer items-center gap-2">
         <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} title={finishedTask ? STATUS_LABEL[task.status] : PRIORITY_LABEL[priority]} />
-        <button
-          onClick={() => setTier((t) => (t === 0 ? 1 : 0))}
-          aria-expanded={tier > 0}
-          className="min-w-0 flex-1 text-left"
-        >
+        <button aria-expanded={tier > 0} className="min-w-0 flex-1 text-left">
           <p className="truncate text-sm font-semibold text-neutral-900">
             {task.subscriber_name}
             {task.status !== 'open' && (
@@ -146,15 +145,15 @@ function TaskRow({
         </button>
         <ChevronDown size={14} className={`shrink-0 text-neutral-400 transition-transform ${tier > 0 ? 'rotate-180' : ''}`} />
         {finishedTask ? (
-          <button onClick={() => onReopen(task)} title="Reopen" className="shrink-0 rounded-full bg-neutral-100 p-2 text-neutral-600">
+          <button onClick={(e) => (e.stopPropagation(), onReopen(task))} title="Reopen" className="shrink-0 rounded-full bg-neutral-100 p-2 text-neutral-600">
             <RotateCcw size={14} />
           </button>
         ) : (
-          <button onClick={() => onEdit(task)} title="Edit" className="shrink-0 rounded-full bg-neutral-100 p-2 text-neutral-600">
+          <button onClick={(e) => (e.stopPropagation(), onEdit(task))} title="Edit" className="shrink-0 rounded-full bg-neutral-100 p-2 text-neutral-600">
             <Pencil size={14} />
           </button>
         )}
-        <button onClick={() => onDelete(task)} title="Delete" className="shrink-0 rounded-full bg-red-50 p-2 text-red-600">
+        <button onClick={(e) => (e.stopPropagation(), onDelete(task))} title="Delete" className="shrink-0 rounded-full bg-red-50 p-2 text-red-600">
           <Trash2 size={14} />
         </button>
       </div>
