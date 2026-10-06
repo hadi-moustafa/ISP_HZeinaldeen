@@ -1,4 +1,4 @@
-export type TaskStatus = 'open' | 'half_done' | 'done' | 'cant_do'
+export type TaskStatus = 'open' | 'in_progress' | 'half_done' | 'done' | 'cant_do'
 export type TaskPriority = 'normal' | 'high' | 'urgent'
 export type TaskOrderStatus = 'requested' | 'sold' | 'rejected'
 

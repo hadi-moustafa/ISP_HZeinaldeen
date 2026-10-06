@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, CheckCircle2, CircleSlash, CircleDashed, PackagePlus } from 'lucide-react'
+import { ChevronDown, CheckCircle2, CircleSlash, CircleDashed, PackagePlus, Play } from 'lucide-react'
 import { useStaff } from '../context/StaffContext'
 import {
   listTechnicianOpenTasks,
   listTechnicianFinishedTasks,
   countTasks,
   setTaskStatus,
+  acceptTask,
   saveTaskReport,
   addTaskOrder,
   deleteTaskOrder,
@@ -71,6 +72,23 @@ function TaskCard({
         task.id,
       )
     }, 'Failed to update the task')
+  }
+
+  // Accepting puts the task in progress (and claims it if it was for any
+  // technician); the Done / Half done / Can't be done buttons come after.
+  function accept() {
+    if (!staff) return
+    run(async () => {
+      await acceptTask(task, staff.id)
+      logActivity(
+        staff.id,
+        `${staff.username} accepted the task for ${task.subscriber_name} (in progress) on ${formatDateTime(
+          new Date().toISOString(),
+        )}`,
+        'task',
+        task.id,
+      )
+    }, 'Failed to accept the task')
   }
 
   function saveReport() {
@@ -195,29 +213,39 @@ function TaskCard({
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-1.5">
+      {task.status === 'open' ? (
         <button
-          onClick={() => changeStatus('done')}
+          onClick={accept}
           disabled={busy}
-          className="flex items-center justify-center gap-1 rounded-full bg-emerald-500 px-2 py-2 text-xs font-semibold text-white disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-1.5 rounded-full bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
         >
-          <CheckCircle2 size={14} /> Done
+          <Play size={14} /> Accept task
         </button>
-        <button
-          onClick={() => changeStatus('half_done')}
-          disabled={busy || task.status === 'half_done'}
-          className="flex items-center justify-center gap-1 rounded-full bg-amber-400 px-2 py-2 text-xs font-semibold text-white disabled:opacity-50"
-        >
-          <CircleDashed size={14} /> Half done
-        </button>
-        <button
-          onClick={() => changeStatus('cant_do')}
-          disabled={busy}
-          className="flex items-center justify-center gap-1 rounded-full bg-red-500 px-2 py-2 text-xs font-semibold text-white disabled:opacity-50"
-        >
-          <CircleSlash size={14} /> Can't be done
-        </button>
-      </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-1.5">
+          <button
+            onClick={() => changeStatus('done')}
+            disabled={busy}
+            className="flex items-center justify-center gap-1 rounded-full bg-emerald-500 px-2 py-2 text-xs font-semibold text-white disabled:opacity-50"
+          >
+            <CheckCircle2 size={14} /> Done
+          </button>
+          <button
+            onClick={() => changeStatus('half_done')}
+            disabled={busy || task.status === 'half_done'}
+            className="flex items-center justify-center gap-1 rounded-full bg-amber-400 px-2 py-2 text-xs font-semibold text-white disabled:opacity-50"
+          >
+            <CircleDashed size={14} /> Half done
+          </button>
+          <button
+            onClick={() => changeStatus('cant_do')}
+            disabled={busy}
+            className="flex items-center justify-center gap-1 rounded-full bg-red-500 px-2 py-2 text-xs font-semibold text-white disabled:opacity-50"
+          >
+            <CircleSlash size={14} /> Can't be done
+          </button>
+        </div>
+      )}
       {error && <p className="text-xs text-red-600">{error}</p>}
       <TaskMeta task={task} />
     </div>

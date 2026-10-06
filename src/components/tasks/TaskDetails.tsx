@@ -5,6 +5,7 @@ import type { TaskProductOrder, TaskWithRelations } from '../../types/tasks'
 import {
   effectivePriority,
   isOverdueTask,
+  isUnfinishedTask,
   formatDateTime,
   orderLabel,
   PRIORITY_CLASS,
@@ -27,7 +28,7 @@ export function TaskHeading({ task, linkSubscriber }: { task: TaskWithRelations;
       ) : (
         <span className="font-semibold text-neutral-900">{task.subscriber_name}</span>
       )}
-      {(task.status === 'open' || task.status === 'half_done') && (
+      {isUnfinishedTask(task) && (
         <span
           className={`rounded-full px-2 py-0.5 text-xs font-semibold ${PRIORITY_CLASS[priority]}`}
           title={bumped ? 'Raised automatically: waiting since a previous day' : undefined}
@@ -56,10 +57,12 @@ function Block({ label, text, tone = 'neutral' }: { label: string; text: string 
 }
 
 // The admin-written body of a task plus the technician's report.
-export function TaskBody({ task }: { task: TaskWithRelations }) {
+// hideContact: the address/phone line is already shown elsewhere (the
+// admin's collapsed task row).
+export function TaskBody({ task, hideContact }: { task: TaskWithRelations; hideContact?: boolean }) {
   return (
     <div className="space-y-1.5">
-      {(task.address || task.phone) && (
+      {!hideContact && (task.address || task.phone) && (
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-neutral-700">
           {task.address && (
             <span className="flex items-center gap-1">

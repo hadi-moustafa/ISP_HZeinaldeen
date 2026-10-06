@@ -34,13 +34,10 @@ const primaryLinks: NavLinkItem[] = [
   { to: '/dabdabeh', label: 'Dabdabeh' },
   { to: '/admin/tasks', label: 'Tasks', adminOnly: true, collectorHidden: true },
   { to: '/tasks', label: 'My tasks', technician: true },
-  { to: '/reports/monthly-log', label: 'Monthly Log', collectorHidden: true },
-  { to: '/reports/financials', label: 'Financial Report', adminOnly: true, collectorHidden: true },
-  { to: '/field', label: 'Field View (offline)', collectorHidden: true },
 ]
 
-// Admin-only, lower-frequency pages -- grouped into collapsible dropdowns
-// by what they're for, instead of one long flat list.
+// Lower-frequency pages -- grouped into collapsible dropdowns by what
+// they're for, instead of one long flat list.
 const groups: { key: string; heading: string; links: NavLinkItem[] }[] = [
   {
     key: 'reference',
@@ -67,6 +64,9 @@ const groups: { key: string; heading: string; links: NavLinkItem[] }[] = [
     key: 'finance',
     heading: 'Finance & activity',
     links: [
+      { to: '/reports/monthly-log', label: 'Monthly Log', collectorHidden: true },
+      { to: '/reports/financials', label: 'Financial Report', adminOnly: true, collectorHidden: true },
+      { to: '/field', label: 'Field View (offline)', collectorHidden: true },
       { to: '/admin/feedback', label: 'Collection Feedback', collectorHidden: true },
       { to: '/admin/activity-log', label: 'Activity Log', collectorHidden: true },
     ],

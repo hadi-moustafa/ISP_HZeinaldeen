@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Plus, Pencil, Trash2, RotateCcw, Search, ChevronDown } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Plus, Pencil, Trash2, RotateCcw, Search, ChevronDown, MapPin, Phone, Clock } from 'lucide-react'
 import { useStaff } from '../../context/StaffContext'
 import {
   listUnfinishedTasks,
@@ -16,13 +17,24 @@ import {
 } from '../../lib/api/tasks'
 import { listTechnicians, type TechnicianStaff } from '../../lib/api/staff'
 import { logActivity } from '../../lib/api/activityLog'
-import { compareTasks, effectivePriority, orderLabel, formatDateTime, STATUS_LABEL, PRIORITY_LABEL } from '../../lib/tasks'
+import {
+  compareTasks,
+  effectivePriority,
+  isCreatedToday,
+  isUnfinishedTask,
+  orderLabel,
+  formatDateTime,
+  STATUS_CLASS,
+  STATUS_LABEL,
+  PRIORITY_LABEL,
+} from '../../lib/tasks'
 import type { TaskInput, TaskPriority, TaskProductOrder, TaskWithRelations } from '../../types/tasks'
 import { Modal } from '../../components/Modal'
-import { TaskBody, TaskHeading, TaskMeta, TaskOrders } from '../../components/tasks/TaskDetails'
+import { TaskBody, TaskMeta, TaskOrders } from '../../components/tasks/TaskDetails'
 import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../lib/uiClasses'
 
-type Tab = 'todo' | 'done' | 'cant_do'
+// Each metric box doubles as a filter for the list below it.
+type Tab = 'today' | 'todo' | 'in_progress' | 'done_month' | 'done' | 'cant_do' | 'orders'
 
 interface FormState {
   // false = a job for someone who isn't a subscriber: name typed by hand,
@@ -63,9 +75,11 @@ function subscriberAddress(s: TaskSubscriberOption) {
   return parts.join(', ')
 }
 
-// Same compact row as the subscriber list: a status dot, name + problem,
-// and the actions. Tap the text to open the full task. Module-level so a
-// page re-render never resets which rows are open.
+// Compact row, expanded in two tiers. Collapsed: name, location, phone.
+// Tap once: the problem, fixes, notes, report and product orders. Then
+// "Date & time" opens the second tier: when it was added and when its
+// status last changed, and by whom. Module-level so a page re-render never
+// resets which rows are open.
 function TaskRow({
   task,
   onEdit,
@@ -81,8 +95,8 @@ function TaskRow({
   onConfirmOrder: (t: TaskWithRelations, o: TaskProductOrder, total: number | null, paid: number) => Promise<void>
   onRejectOrder: (t: TaskWithRelations, o: TaskProductOrder) => Promise<void>
 }) {
-  const [expanded, setExpanded] = useState(false)
-  const finishedTask = task.status === 'done' || task.status === 'cant_do'
+  const [tier, setTier] = useState<0 | 1 | 2>(0)
+  const finishedTask = !isUnfinishedTask(task)
   const priority = effectivePriority(task)
   const pendingOrders = task.task_product_orders.filter((o) => o.status === 'requested').length
   const dot = finishedTask
@@ -99,11 +113,17 @@ function TaskRow({
     <div className="rounded-xl border border-neutral-200 bg-white px-3 py-2">
       <div className="flex items-center gap-2">
         <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} title={finishedTask ? STATUS_LABEL[task.status] : PRIORITY_LABEL[priority]} />
-        <button onClick={() => setExpanded((v) => !v)} aria-expanded={expanded} className="min-w-0 flex-1 text-left">
+        <button
+          onClick={() => setTier((t) => (t === 0 ? 1 : 0))}
+          aria-expanded={tier > 0}
+          className="min-w-0 flex-1 text-left"
+        >
           <p className="truncate text-sm font-semibold text-neutral-900">
             {task.subscriber_name}
-            {task.status === 'half_done' && (
-              <span className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-[9px] font-medium uppercase text-amber-700">half done</span>
+            {task.status !== 'open' && (
+              <span className={`ml-1.5 rounded px-1 py-0.5 text-[9px] font-medium uppercase ${STATUS_CLASS[task.status]}`}>
+                {STATUS_LABEL[task.status]}
+              </span>
             )}
             {pendingOrders > 0 && (
               <span className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-[9px] font-medium uppercase text-amber-700">
@@ -111,11 +131,20 @@ function TaskRow({
               </span>
             )}
           </p>
-          <p className="truncate text-xs text-neutral-500">
-            {task.problem} · {task.assigned_staff?.username ?? 'any technician'}
+          <p className="flex items-center gap-2 truncate text-xs text-neutral-500">
+            <span className="flex min-w-0 items-center gap-0.5 truncate">
+              <MapPin size={11} className="shrink-0 text-neutral-400" />
+              <span className="truncate">{task.address || 'No address'}</span>
+            </span>
+            {task.phone && (
+              <span className="flex shrink-0 items-center gap-0.5">
+                <Phone size={11} className="text-neutral-400" />
+                {task.phone}
+              </span>
+            )}
           </p>
         </button>
-        <ChevronDown size={14} className={`shrink-0 text-neutral-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+        <ChevronDown size={14} className={`shrink-0 text-neutral-400 transition-transform ${tier > 0 ? 'rotate-180' : ''}`} />
         {finishedTask ? (
           <button onClick={() => onReopen(task)} title="Reopen" className="shrink-0 rounded-full bg-neutral-100 p-2 text-neutral-600">
             <RotateCcw size={14} />
@@ -129,17 +158,40 @@ function TaskRow({
           <Trash2 size={14} />
         </button>
       </div>
-      {expanded && (
+      {tier > 0 && (
         <div className="mt-2 space-y-2 border-t border-neutral-100 pt-2">
-          <TaskHeading task={task} linkSubscriber />
-          <TaskBody task={task} />
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+            {task.phone && (
+              <a href={`tel:${task.phone}`} className="flex items-center gap-1 font-medium text-blue-600">
+                <Phone size={12} /> Call
+              </a>
+            )}
+            {task.subscriber_id && (
+              <Link to={`/subscribers/${task.subscriber_id}`} className="font-medium text-blue-600">
+                Open subscriber →
+              </Link>
+            )}
+            <span className="text-neutral-500">
+              {task.assigned_staff ? `For ${task.assigned_staff.username}` : 'Any technician'}
+              {!finishedTask && ` · ${PRIORITY_LABEL[priority]} priority`}
+            </span>
+          </div>
+          <TaskBody task={task} hideContact />
           <TaskOrders
             orders={task.task_product_orders}
             forSubscriber={task.subscriber_id != null}
             onConfirm={(o, total, paid) => onConfirmOrder(task, o, total, paid)}
             onReject={(o) => onRejectOrder(task, o)}
           />
-          <TaskMeta task={task} />
+          <button
+            onClick={() => setTier((t) => (t === 2 ? 1 : 2))}
+            aria-expanded={tier === 2}
+            className="flex items-center gap-1 text-xs font-medium text-neutral-500"
+          >
+            <Clock size={12} /> Date &amp; time
+            <ChevronDown size={12} className={`transition-transform ${tier === 2 ? 'rotate-180' : ''}`} />
+          </button>
+          {tier === 2 && <TaskMeta task={task} />}
         </div>
       )}
     </div>
@@ -189,27 +241,46 @@ export function TasksPage() {
     listTaskSubscriberOptions().then(setSubscribers).catch(() => {})
   }, [])
 
-  // Search by name, phone, address or problem, within the selected chip.
-  const visible = useMemo(() => {
-    const rows = tab === 'todo' ? [...unfinished].sort(compareTasks) : finished.filter((t) => t.status === tab)
-    const term = search.trim().toLowerCase()
-    if (!term) return rows
-    return rows.filter((t) =>
-      [t.subscriber_name, t.phone, t.address, t.problem].some((v) => (v ?? '').toLowerCase().includes(term)),
-    )
-  }, [tab, unfinished, finished, search])
-
   const metrics = useMemo(() => {
     const month = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Beirut' }).slice(0, 7)
     const inMonth = (iso: string | null) =>
       iso != null && new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Beirut' }).slice(0, 7) === month
-    const doneThisMonth = finished.filter((t) => t.status === 'done' && inMonth(t.finished_at)).length
-    const pendingOrders = [...unfinished, ...finished].reduce(
-      (n, t) => n + t.task_product_orders.filter((o) => o.status === 'requested').length,
-      0,
-    )
-    return { doneThisMonth, pendingOrders }
+    const all = [...unfinished, ...finished]
+    const hasPendingOrder = (t: TaskWithRelations) => t.task_product_orders.some((o) => o.status === 'requested')
+    return {
+      // New today: created today (Beirut), whatever its status now.
+      today: all.filter(isCreatedToday),
+      // To do = not accepted by a technician yet; in progress = accepted
+      // (or half done -- started, not finished).
+      todo: unfinished.filter((t) => t.status === 'open'),
+      inProgress: unfinished.filter((t) => t.status === 'in_progress' || t.status === 'half_done'),
+      doneMonth: finished.filter((t) => t.status === 'done' && inMonth(t.finished_at)),
+      orders: all.filter(hasPendingOrder),
+      pendingOrderCount: all.reduce((n, t) => n + t.task_product_orders.filter((o) => o.status === 'requested').length, 0),
+    }
   }, [finished, unfinished])
+
+  // Search by name, phone, address or problem, within the selected box.
+  const visible = useMemo(() => {
+    const rows =
+      tab === 'today'
+        ? metrics.today
+        : tab === 'todo'
+          ? metrics.todo
+          : tab === 'in_progress'
+            ? metrics.inProgress
+            : tab === 'done_month'
+              ? metrics.doneMonth
+              : tab === 'orders'
+                ? metrics.orders
+                : finished.filter((t) => t.status === tab)
+    const sorted = rows.every(isUnfinishedTask) ? [...rows].sort(compareTasks) : rows
+    const term = search.trim().toLowerCase()
+    if (!term) return sorted
+    return sorted.filter((t) =>
+      [t.subscriber_name, t.phone, t.address, t.problem].some((v) => (v ?? '').toLowerCase().includes(term)),
+    )
+  }, [tab, metrics, finished, search])
 
   const subscriberMatches = useMemo(() => {
     const term = subscriberSearch.trim().toLowerCase()
@@ -359,10 +430,15 @@ export function TasksPage() {
     }
   }
 
-  const chips: [Tab, string, number][] = [
-    ['todo', 'To do', unfinished.length],
-    ['done', 'Done', totals.done],
-    ['cant_do', "Can't do", totals.cantDo],
+  // [tab, label, count, number colour]
+  const boxes: [Tab, string, number, string][] = [
+    ['today', 'New today', metrics.today.length, 'text-indigo-600'],
+    ['todo', 'To do', metrics.todo.length, 'text-neutral-900'],
+    ['in_progress', 'In progress', metrics.inProgress.length, 'text-blue-600'],
+    ['orders', 'Orders to confirm', metrics.pendingOrderCount, 'text-amber-600'],
+    ['done_month', 'Done this month', metrics.doneMonth.length, 'text-emerald-600'],
+    ['done', 'Done total', totals.done, 'text-emerald-700'],
+    ['cant_do', "Can't do", totals.cantDo, 'text-red-600'],
   ]
 
   return (
@@ -391,25 +467,21 @@ export function TasksPage() {
         />
       </div>
 
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        {chips.map(([key, label, count]) => (
+      <div className="mb-3 grid grid-cols-4 gap-1.5">
+        {boxes.map(([key, label, count, color]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`shrink-0 rounded-full px-3 py-2 text-sm font-medium shadow-sm ${
-              tab === key ? 'bg-indigo-500 text-white' : 'bg-white text-neutral-700'
+            aria-pressed={tab === key}
+            className={`flex flex-col items-start justify-start rounded-lg border px-1.5 py-1.5 text-left ${
+              tab === key ? 'border-indigo-400 bg-indigo-50' : 'border-neutral-200 bg-white'
             }`}
           >
-            {label} {count}
+            <p className={`text-base font-bold leading-tight tabular-nums ${color}`}>{count}</p>
+            <p className="text-[10px] leading-tight text-neutral-500">{label}</p>
           </button>
         ))}
-        {metrics.pendingOrders > 0 && (
-          <span className="ml-auto shrink-0 rounded-full bg-amber-100 px-3 py-1.5 text-sm font-bold text-amber-700">
-            {metrics.pendingOrders} order{metrics.pendingOrders > 1 ? 's' : ''} to confirm
-          </span>
-        )}
       </div>
-      <p className="mb-3 text-xs text-neutral-500">{metrics.doneThisMonth} done this month</p>
 
       {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
       {loading && <p className="text-sm text-neutral-500">Loading…</p>}
@@ -428,11 +500,15 @@ export function TasksPage() {
         ))}
         {!loading && visible.length === 0 && (
           <p className="text-sm text-neutral-500">
-            {search.trim() ? 'No tasks match this search.' : tab === 'todo' ? 'No open tasks. Tap + to add one.' : 'Nothing here yet.'}
+            {search.trim()
+              ? 'No tasks match this search.'
+              : tab === 'todo'
+                ? 'Nothing waiting to be accepted. Tap + to add a task.'
+                : 'Nothing here yet.'}
           </p>
         )}
       </div>
-      {tab !== 'todo' && finished.length >= 200 && (
+      {(tab === 'done' || tab === 'cant_do' || tab === 'done_month') && finished.length >= 200 && (
         <p className="mt-2 text-xs text-neutral-400">Showing the latest 200 finished tasks.</p>
       )}
 

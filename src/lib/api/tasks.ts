@@ -1,6 +1,7 @@
 import { supabase } from '../supabase'
 import { fetchAllRows } from './fetchAll'
 import type { TaskInput, TaskStatus, TaskWithRelations } from '../../types/tasks'
+import { UNFINISHED_STATUSES } from '../tasks'
 
 const TASK_SELECT = `
   *,
@@ -18,12 +19,13 @@ function sortOrders(tasks: TaskWithRelations[]) {
   return tasks
 }
 
-// Admin: every task that's still on someone's list (open or half done).
+// Admin: every task that's still on someone's list (open, in progress or
+// half done).
 export async function listUnfinishedTasks(): Promise<TaskWithRelations[]> {
   const { data, error } = await supabase
     .from('tasks')
     .select(TASK_SELECT)
-    .in('status', ['open', 'half_done'])
+    .in('status', UNFINISHED_STATUSES)
     .order('created_at')
   if (error) throw error
   return sortOrders(data as unknown as TaskWithRelations[])
@@ -46,7 +48,7 @@ export async function listTechnicianOpenTasks(staffId: string): Promise<TaskWith
   const { data, error } = await supabase
     .from('tasks')
     .select(TASK_SELECT)
-    .in('status', ['open', 'half_done'])
+    .in('status', UNFINISHED_STATUSES)
     .or(`assigned_to.eq.${staffId},assigned_to.is.null`)
     .order('created_at')
   if (error) throw error
@@ -129,6 +131,20 @@ export async function setTaskStatus(id: string, status: TaskStatus, report: stri
     .update({ status, report, status_changed_by: staffId })
     .eq('id', id)
   if (error) throw error
+}
+
+// Technician accepts a task: it goes in progress, and an unassigned
+// ("any technician") task becomes theirs so nobody else picks it up too.
+// Only from 'open', so two technicians accepting at once can't both win.
+export async function acceptTask(task: { id: string; assigned_to: string | null }, staffId: string) {
+  const { data, error } = await supabase
+    .from('tasks')
+    .update({ status: 'in_progress', status_changed_by: staffId, assigned_to: task.assigned_to ?? staffId })
+    .eq('id', task.id)
+    .eq('status', 'open')
+    .select('id')
+  if (error) throw error
+  if (!data || data.length === 0) throw new Error('This task was already taken or changed. Refresh the list.')
 }
 
 export async function saveTaskReport(id: string, report: string | null) {
