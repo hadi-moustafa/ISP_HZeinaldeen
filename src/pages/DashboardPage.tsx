@@ -29,8 +29,10 @@ import type { MonthlyLogRow } from '../types/reports'
 import { FILTER_FIELDS, TEXT_FILTER_FIELDS, type FilterField } from '../lib/subscriberFilterFields'
 import { AppHeader } from '../components/AppHeader'
 import { PaymentModal } from '../components/subscriber/PaymentModal'
+import { AddressRefine } from '../components/subscriber/AddressRefine'
+import { SORT_OPTIONS, isBuildingSort, sortSubscribers, type SubscriberSort } from '../lib/subscriberSort'
 import { SubscriberRow } from '../components/subscriber/SubscriberRow'
-import { currentPeriodMonth, compareByExpiryDay, quickPostpone, billingKeyFor } from '../lib/subscriberRowHelpers'
+import { currentPeriodMonth, quickPostpone, billingKeyFor } from '../lib/subscriberRowHelpers'
 import { cardClass } from '../lib/uiClasses'
 import { ChevronDown, AlertTriangle } from 'lucide-react'
 
@@ -75,6 +77,9 @@ export function DashboardPage() {
   // On its own (no search or filter) it lists everyone paid / unpaid.
   const [paidFilter, setPaidFilter] = useLocalStorageState<'any' | 'paid' | 'unpaid'>('isp:dashboard-filters:paid', 'any')
   const [searching, setSearching] = useState(false)
+  // Order of the search results. Picking an address switches to building
+  // order (smallest first); the admin can change it from the results bar.
+  const [sortMode, setSortMode] = useLocalStorageState<SubscriberSort>('isp:dashboard-filters:sort', 'expiry_asc')
 
   const [services, setServices] = useState<ServiceWithCompany[]>([])
   const [collectors, setCollectors] = useState<Collector[]>([])
@@ -179,13 +184,16 @@ export function DashboardPage() {
   // subscriber with a service who hasn't paid yet (suspended/cancelled
   // subscribers aren't billed, so they're never "unpaid").
   const displayedResults = useMemo(() => {
-    if (paidFilter === 'any') return searchResults
-    return searchResults.filter((sub) => {
-      const paid = billingKeyFor(monthlyLogBySubscriber[sub.id], sub.debt) === 'paid'
-      if (paidFilter === 'paid') return paid
-      return !paid && sub.connection_status === 'active' && Boolean(sub.service_id)
-    })
-  }, [searchResults, paidFilter, monthlyLogBySubscriber])
+    const rows =
+      paidFilter === 'any'
+        ? searchResults
+        : searchResults.filter((sub) => {
+            const paid = billingKeyFor(monthlyLogBySubscriber[sub.id], sub.debt) === 'paid'
+            if (paidFilter === 'paid') return paid
+            return !paid && sub.connection_status === 'active' && Boolean(sub.service_id)
+          })
+    return sortSubscribers(rows, sortMode)
+  }, [searchResults, paidFilter, monthlyLogBySubscriber, sortMode])
 
   useEffect(() => {
     if (!searchActive) {
@@ -218,7 +226,7 @@ export function DashboardPage() {
             const term = filters.search.trim().toLowerCase()
             result = result.filter((r) => r.id.toLowerCase().includes(term))
           }
-          setSearchResults([...result].sort(compareByExpiryDay))
+          setSearchResults(result)
         })
         .catch(() => {
           if (!cancelled) setSearchResults([])
@@ -242,6 +250,9 @@ export function DashboardPage() {
     setFilterField(field)
     setFilterFieldMenuOpen(false)
     setFilters(emptyFilters)
+    // Building order belongs to the address filter; leaving it goes back
+    // to the default order.
+    if (field !== 'address' && isBuildingSort(sortMode)) setSortMode('expiry_asc')
   }
 
   async function handleQuickPostpone(sub: SubscriberWithRelations) {
@@ -384,7 +395,11 @@ export function DashboardPage() {
                 <>
                   <select
                     value={filters.addressId}
-                    onChange={(e) => setFilters((f) => ({ ...f, addressId: e.target.value, regionId: '' }))}
+                    onChange={(e) => {
+                      const addressId = e.target.value
+                      setFilters((f) => ({ ...f, addressId, regionId: '' }))
+                      if (addressId) setSortMode('building_asc')
+                    }}
                     className={pillControlClass}
                   >
                     <option value="">Any address</option>
@@ -460,12 +475,27 @@ export function DashboardPage() {
             {/* Address narrows the list, then the name search narrows it
                 further -- both apply together, like the subscriber list. */}
             {filterField === 'address' && (
-              <input
-                value={filters.search}
-                onChange={(e) => updateFilter('search', e.target.value)}
-                placeholder="Search by name…"
-                className="basis-full rounded-full bg-white px-3 py-2 text-xs text-neutral-900 shadow-sm outline-none"
-              />
+              <>
+                <input
+                  value={filters.search}
+                  onChange={(e) => updateFilter('search', e.target.value)}
+                  placeholder="Search by name…"
+                  className="basis-full rounded-full bg-white px-3 py-2 text-xs text-neutral-900 shadow-sm outline-none"
+                />
+                {/* One more filter on top of the address (collector,
+                    company, status…). */}
+                <div className="flex basis-full gap-2">
+                  <AddressRefine
+                    filters={filters}
+                    setFilters={setFilters}
+                    collectors={collectors}
+                    companies={companies}
+                    services={services}
+                    owners={owners}
+                    className="min-w-0 flex-1 rounded-full bg-white px-3 py-2 text-xs text-neutral-900 shadow-sm"
+                  />
+                </div>
+              </>
             )}
 
           </div>
@@ -482,22 +512,38 @@ export function DashboardPage() {
                         displayedResults.length === 1 ? '' : 'es'
                       }`}
                 </p>
-                <button
-                  onClick={() => {
-                    setFilters(emptyFilters)
-                    setFilterField('name')
-                    setPaidFilter('any')
-                  }}
-                  className="text-xs font-medium text-neutral-500"
-                >
-                  Clear
-                </button>
+                <div className="flex items-center gap-3">
+                  <select
+                    value={sortMode}
+                    onChange={(e) => setSortMode(e.target.value as SubscriberSort)}
+                    aria-label="Order"
+                    className="rounded-full bg-white px-2 py-1 text-xs text-neutral-700 shadow-sm"
+                  >
+                    {SORT_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => {
+                      setFilters(emptyFilters)
+                      setFilterField('name')
+                      setPaidFilter('any')
+                      setSortMode('expiry_asc')
+                    }}
+                    className="text-xs font-medium text-neutral-500"
+                  >
+                    Clear
+                  </button>
+                </div>
               </div>
               {!searching && displayedResults.length === 0 && (
                 <p className="text-xs text-neutral-400">No subscribers match.</p>
               )}
               {displayedResults.map((sub) => (
                 <SubscriberRow
+                  showBuilding={isBuildingSort(sortMode)}
                   key={sub.id}
                   sub={sub}
                   log={monthlyLogBySubscriber[sub.id]}

@@ -145,6 +145,13 @@ The subscriber list (`src/pages/subscribers/SubscribersListPage.tsx`) was redesi
 - Subscriber list: Add button shrank to an icon-only circular `+`; Export moved into the header via `HeaderActions`; each card gained a top-left checkbox (wired to Export — exports only the selected rows when any are selected, otherwise the current filtered list) and a Pay button (opens the same payment-logging modal pattern as `InvoicesSection`/`OfflinePage`, disabled when the subscriber has no invoice for the current period).
 - `monthly_log` view gained a trailing `invoice_id` column (`0006_monthly_log_invoice_id.sql`) so the list's Pay button can log a payment against the correct invoice without a second round-trip per row. Real gotcha hit live: `CREATE OR REPLACE VIEW` only allows *appending* trailing columns — putting `invoice_id` first in the SELECT list failed against the real project; it has to go last.
 
+## Address filter: building order + "And also" (2026-10-06)
+
+- Sorting for both the subscriber list and dashboard search lives in `src/lib/subscriberSort.ts` (`sortSubscribers`, `SORT_OPTIONS`): Expiry ↑/↓ (default ↑), Building ↑/↓, Name A→Z/Z→A. Building is free text, so it's a natural, case-insensitive sort ("Bldg 2" before "Bldg 10"); blank buildings always last, ties by name.
+- Picking an address switches the order to Building ↑; switching the filter field away from Address puts a building order back to Expiry ↑. While a building order is active, rows show the building (`SubscriberRow showBuilding`).
+- In address mode both pages show `AddressRefine` (`src/components/subscriber/AddressRefine.tsx`): "And also…" one more field (collector / company / service / owner / status / nationality) + value, written into the same `filters` object the query already uses. Changing the field clears the previous one's value.
+- The dashboard's order picker sits in the results bar next to Clear.
+
 ## Switchable new design (2026-10-06, development)
 
 A plain white-and-blue design that staff can switch to per device (menu drawer → Design: Classic / New, also on the login page). Classic stays the default. **There is one set of pages** -- the new design re-skins all of them from one stylesheet, so nothing has to be built twice.

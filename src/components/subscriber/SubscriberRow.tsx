@@ -16,6 +16,7 @@ export function SubscriberRow({
   postponing = false,
   selected,
   onToggleSelect,
+  showBuilding = false,
 }: {
   sub: SubscriberWithRelations
   log: MonthlyLogRow | undefined
@@ -24,6 +25,8 @@ export function SubscriberRow({
   postponing?: boolean
   selected?: boolean
   onToggleSelect?: (id: string) => void
+  // Building order: show each row's building, so the order is visible.
+  showBuilding?: boolean
 }) {
   const day = expiryDay(sub.expiry_date)
   return (
@@ -48,6 +51,7 @@ export function SubscriberRow({
           )}
         </p>
         <p className="truncate text-xs text-neutral-500">
+          {showBuilding && <span className="font-medium text-neutral-700">{sub.building?.trim() || 'No building'} · </span>}
           {sub.services?.companies?.name ?? '—'}
           {day !== null ? ` · exp ${day}` : ''}
         </p>

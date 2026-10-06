@@ -26,7 +26,9 @@ import { useStaff } from '../../context/StaffContext'
 import { HeaderActions } from '../../components/AppHeader'
 import { PaymentModal } from '../../components/subscriber/PaymentModal'
 import { SubscriberRow } from '../../components/subscriber/SubscriberRow'
-import { currentPeriodMonth, compareByExpiryDay, quickPostpone, billingKeyFor } from '../../lib/subscriberRowHelpers'
+import { currentPeriodMonth, quickPostpone, billingKeyFor } from '../../lib/subscriberRowHelpers'
+import { SORT_OPTIONS, isBuildingSort, sortSubscribers, type SubscriberSort } from '../../lib/subscriberSort'
+import { AddressRefine } from '../../components/subscriber/AddressRefine'
 import { exportToExcel } from '../../lib/exportExcel'
 import { useLocalStorageState } from '../../lib/useLocalStorageState'
 
@@ -66,7 +68,8 @@ export function SubscribersListPage() {
 
   // New storage key: the old one could hold 'none' (unsorted), which no
   // longer exists -- lists always read smallest-to-largest by default now.
-  const [sortMode, setSortMode] = useLocalStorageState<'expiry_asc' | 'expiry_desc'>(
+  // Picking an address switches to building order.
+  const [sortMode, setSortMode] = useLocalStorageState<SubscriberSort>(
     'isp:subscribers-filters:sort-v2',
     'expiry_asc',
   )
@@ -177,6 +180,8 @@ export function SubscribersListPage() {
     setFilterField(field)
     setSearchFieldMenuOpen(false)
     setFilters((f) => ({ ...emptyFilters, debtMode: f.debtMode }))
+    // Building order belongs to the address filter.
+    if (field !== 'address' && isBuildingSort(sortMode)) setSortMode('expiry_asc')
   }
 
   // Counts everything the "Clear filters" button resets -- not just the
@@ -296,8 +301,7 @@ export function SubscribersListPage() {
             const paid = billingKeyFor(monthlyLogBySubscriber[s.id], s.debt) === 'paid'
             return billingFilter === 'paid' ? paid : !paid
           })
-    const sorted = [...billingFiltered].sort(compareByExpiryDay)
-    return sortMode === 'expiry_desc' ? sorted.reverse() : sorted
+    return sortSubscribers(billingFiltered, sortMode)
   }, [subscribers, monthlyLogBySubscriber, sortMode, billingFilter])
 
   return (
@@ -421,6 +425,8 @@ export function SubscribersListPage() {
                   // reverse.
                   const addressId = e.target.value
                   setFilters((f) => ({ ...f, addressId, regionId: '' }))
+                  // Within one address, walk the buildings in order.
+                  if (addressId) setSortMode('building_asc')
                 }}
                 className="min-w-0 flex-1 rounded-full bg-white px-3 py-2.5 text-sm text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100"
               >
@@ -454,6 +460,19 @@ export function SubscribersListPage() {
                   onChange={(e) => updateFilter('search', e.target.value)}
                   placeholder="Search by name…"
                   className="min-w-0 flex-1 bg-transparent py-2.5 text-sm text-neutral-900 outline-none dark:text-neutral-100"
+                />
+              </div>
+              {/* One more filter on top of the address (collector,
+                  company, status…). */}
+              <div className="flex w-full gap-2">
+                <AddressRefine
+                  filters={filters}
+                  setFilters={setFilters}
+                  collectors={collectors}
+                  companies={companies}
+                  services={services}
+                  owners={owners}
+                  className="min-w-0 flex-1 rounded-full bg-white px-3 py-2.5 text-sm text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100"
                 />
               </div>
             </>
@@ -581,10 +600,14 @@ export function SubscribersListPage() {
         <select
           value={sortMode}
           onChange={(e) => setSortMode(e.target.value as typeof sortMode)}
+          aria-label="Order"
           className="shrink-0 rounded-full bg-white px-3 py-2 text-sm text-neutral-700 shadow-sm dark:bg-neutral-800 dark:text-neutral-200"
         >
-          <option value="expiry_asc">Expiry ↑</option>
-          <option value="expiry_desc">Expiry ↓</option>
+          {SORT_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
         </select>
         {activeFilterCount > 0 && (
           <button onClick={clearAllFilters} className="shrink-0 text-xs font-medium text-neutral-500">
@@ -636,6 +659,7 @@ export function SubscribersListPage() {
       <div className="space-y-1.5">
         {displaySubscribers.map((sub) => (
           <SubscriberRow
+            showBuilding={isBuildingSort(sortMode)}
             key={sub.id}
             sub={sub}
             log={monthlyLogBySubscriber[sub.id]}
