@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   postponeInvoice,
   createPeriodInvoice,
@@ -102,6 +102,8 @@ export function PaymentModal({
   const [serviceAmount, setServiceAmount] = useState('')
   const [serviceExpected, setServiceExpected] = useState(0)
   const [servicePriceToggle, setServicePriceToggle] = useState(false)
+  // Once staff type an amount, late-arriving data must not overwrite it.
+  const serviceTouched = useRef(false)
 
   const [debtAmount, setDebtAmount] = useState('')
 
@@ -157,6 +159,7 @@ export function PaymentModal({
     setFlaggedLines(null)
     setFlagChoices({})
     setServicePriceToggle(false)
+    serviceTouched.current = false
     setDate(todayLocal())
     setNotes('')
     setFeedback('')
@@ -177,21 +180,6 @@ export function PaymentModal({
       .then((balance) => setDebtAmount(balance > 0 ? String(round2(balance)) : ''))
       .catch(() => {})
 
-    const service = subscriber.service_id ? services.find((s) => s.id === subscriber.service_id) : undefined
-    const estimate = round2(
-      monthlyLog ? Math.max(monthlyLog.amount_due - monthlyLog.amount_paid, 0) : (service?.sell_price ?? 0),
-    )
-    setServiceExpected(estimate)
-    setServiceAmount(estimate ? String(estimate) : '')
-    if (!monthlyLog && subscriber.service_id) {
-      computeInvoiceAmount(subscriber.id, currentPeriodMonth())
-        .then((amountDue) => {
-          setServiceExpected(amountDue)
-          setServiceAmount((prev) => (prev === String(estimate) ? String(amountDue) : prev))
-        })
-        .catch(() => {})
-    }
-
     listOpenSaleMovementsForSubscriber(subscriber.id)
       .then(setOpenProducts)
       .catch(() => setOpenProducts([]))
@@ -200,6 +188,35 @@ export function PaymentModal({
       .catch(() => setAllProducts([]))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subscriber?.id])
+
+  // What the Service line is expected to be. Re-runs when the page's prices
+  // and billing data arrive, since the popup can be opened before they have
+  // loaded. A line already paid in this popup is left alone.
+  useEffect(() => {
+    if (!subscriber || lineDone.has('service')) return
+    let cancelled = false
+    const fill = (amount: number) => {
+      setServiceExpected(amount)
+      if (!serviceTouched.current) setServiceAmount(amount ? String(amount) : '')
+    }
+    if (monthlyLog) {
+      fill(round2(Math.max(monthlyLog.amount_due - monthlyLog.amount_paid, 0)))
+    } else {
+      const service = services.find((s) => s.id === subscriber.service_id)
+      fill(round2(service?.sell_price ?? 0))
+      if (subscriber.service_id) {
+        computeInvoiceAmount(subscriber.id, currentPeriodMonth())
+          .then((amountDue) => {
+            if (!cancelled) fill(round2(amountDue))
+          })
+          .catch(() => {})
+      }
+    }
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subscriber?.id, services, monthlyLog?.amount_due, monthlyLog?.amount_paid])
 
   // Keep the Products aggregate in sync with existing+newly-picked lines
   // unless the staff has manually typed into it -- same "touched" pattern
@@ -656,7 +673,10 @@ export function PaymentModal({
               step="0.01"
               min="0"
               value={serviceAmount}
-              onChange={(e) => setServiceAmount(e.target.value)}
+              onChange={(e) => {
+                serviceTouched.current = true
+                setServiceAmount(e.target.value)
+              }}
               placeholder="Amount"
               disabled={!activeSub?.service_id || lineDone.has('service')}
               className={`${compactInputClass} min-w-0 flex-1`}
