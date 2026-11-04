@@ -215,7 +215,7 @@ Follow-up to a full review of debt / forgive / postpone / company dues / import 
 - **Visibility**: a technician sees tasks assigned to them plus unassigned ones.
 - **Auto priority**: an unfinished task created before today (Beirut) shows as at least High — computed at read time in `src/lib/tasks.ts` (`effectivePriority`), not stored, no cron.
 - **Product orders** (`task_product_orders`): the technician only *requests* (product + qty + note). Nothing touches stock or money until the admin confirms, via `confirm_task_product_order()` — runs the existing `log_product_sale()` and marks the order `sold` in one transaction (price blank = normal price; "paid now" 0 = unpaid on the subscriber's account, collected through Pay). Or the admin rejects it.
-- **Pay modal**: `MonthTasksSummary` at the top lists this subscriber's task work this Beirut month (status, time, technician, report, products) before payment is taken.
+- **Pay modal**: `MonthTasksSummary` at the top lists this subscriber's task work this Beirut month (status, time, technician, report, products) before payment is taken. Collapsed to one tappable line (with the count) so the form fits a phone screen.
 - **Activity log**: create/edit/delete/reopen task, status changes (with date/time), reports, order add/remove/confirm/reject, technician account create/edit/delete (`entity_type` `task` / `technician`).
 - `subscriber_id` is `ON DELETE SET NULL` with a `subscriber_name` snapshot, so history and metrics survive a subscriber delete.
 - **Location link** (2026-10-06, migration 0038): optional `tasks.location_url`, set in the admin task form. `mapsLink()` in `src/lib/tasks.ts` normalizes what's pasted (full link kept, missing `https://` added, bare coordinates → Google Maps search URL) and rejects anything else, incl. non-http schemes like `javascript:`. In the form, the hint text was replaced by a pin button beside the box: opens Google Maps (to find the place and copy its link), or the pasted link once one is valid. `TaskMapPin` (TaskDetails.tsx) is a round pin link (new tab; on a phone Google Maps links open the Maps app) next to the pen on admin rows and in the top corner of the technician's cards.
@@ -224,6 +224,7 @@ Follow-up to a full review of debt / forgive / postpone / company dues / import 
 
 ## Collection feedback (2026-10-03, migration 0036)
 
+- **Fits one phone screen** (2026-11-04): `Modal compact` + `compactInputClass`; measured without scrolling at 360x640 and 320x568. Inputs stay `text-base`, since iPhones zoom in on focus below 16px. Keep this in mind when adding a field.
 - **Pay modal** (`PaymentModal.tsx`) has an optional "Feedback for the admin" textarea, separate from the payment Notes. Saved to `collection_feedback` (subscriber + `subscriber_name` snapshot, collector picked in the modal, staff) via `saveFeedback()`:
   - with a payment → after the payment lines succeed;
   - with no lines selected → Save stores just the feedback (not home / refused / complaint), no payment;

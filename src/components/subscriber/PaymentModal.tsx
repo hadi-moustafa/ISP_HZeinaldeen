@@ -25,7 +25,7 @@ import { round2 } from '../../lib/money'
 import { useStaff } from '../../context/StaffContext'
 import { Modal } from '../Modal'
 import { MonthTasksSummary } from '../tasks/MonthTasksSummary'
-import { inputClass, secondaryButtonClass, primaryButtonClass, dangerButtonClass } from '../../lib/uiClasses'
+import { compactInputClass, secondaryButtonClass, primaryButtonClass, dangerButtonClass } from '../../lib/uiClasses'
 import { Clock, Plus, X } from 'lucide-react'
 import type { SubscriberWithRelations } from '../../types/subscribers'
 import type { MonthlyLogRow } from '../../types/reports'
@@ -549,10 +549,10 @@ export function PaymentModal({
   const canNotify = Boolean(phoneDraft.trim() || activeSub?.phone)
 
   return (
-    <Modal open={Boolean(subscriber)} onClose={onClose} title={`Pay · ${subscriber?.name ?? ''}`}>
+    <Modal open={Boolean(subscriber)} onClose={onClose} title={`Pay · ${subscriber?.name ?? ''}`} compact>
       {pickerOpen ? (
         <div>
-          <div className="mb-3 max-h-96 space-y-1 overflow-y-auto">
+          <div className="mb-3 max-h-[70dvh] space-y-1 overflow-y-auto">
             {allProducts.map((p) => (
               <button
                 key={p.id}
@@ -644,12 +644,12 @@ export function PaymentModal({
         </div>
       ) : (
         <form onSubmit={handleSaveClick}>
-          {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+          {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
 
           {activeSub && <MonthTasksSummary subscriberId={activeSub.id} />}
 
           {/* Service */}
-          <div className="mb-3 flex items-center gap-2">
+          <div className="mb-1 flex items-center gap-2">
             <span className="w-16 shrink-0 text-sm font-medium text-neutral-700">Service</span>
             <input
               type="number"
@@ -659,34 +659,34 @@ export function PaymentModal({
               onChange={(e) => setServiceAmount(e.target.value)}
               placeholder="Amount"
               disabled={!activeSub?.service_id || lineDone.has('service')}
-              className={`${inputClass} flex-1`}
+              className={`${compactInputClass} min-w-0 flex-1`}
             />
             <button
               type="button"
               onClick={() => toggleLine('service')}
               disabled={!activeSub?.service_id || lineDone.has('service')}
-              className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold disabled:opacity-40 ${
+              className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold disabled:opacity-40 ${
                 selectedLines.has('service') ? lineVibrantClass.service : linePaleClass.service
               }`}
             >
               {lineDone.has('service') ? '✓' : 'Pay'}
             </button>
           </div>
-          <label className="mb-4 flex items-center gap-2 pl-16 text-xs text-neutral-500">
+          <label className="mb-2 flex items-center gap-2 pl-16 text-xs text-neutral-500">
             <input
               type="checkbox"
               checked={servicePriceToggle}
               onChange={(e) => setServicePriceToggle(e.target.checked)}
               disabled={!activeSub?.service_id}
             />
-            Make this this subscriber's new permanent price for this service
+            Make this their new permanent price
           </label>
           {!activeSub?.service_id && (
-            <p className="-mt-3 mb-4 pl-16 text-xs text-amber-600">No service assigned -- edit the subscriber first.</p>
+            <p className="-mt-1 mb-2 pl-16 text-xs text-amber-600">No service assigned -- edit the subscriber first.</p>
           )}
 
           {/* Debt */}
-          <div className="mb-4 flex items-center gap-2">
+          <div className="mb-2 flex items-center gap-2">
             <span className="w-16 shrink-0 text-sm font-medium text-neutral-700">Debt</span>
             <input
               type="number"
@@ -696,13 +696,13 @@ export function PaymentModal({
               onChange={(e) => setDebtAmount(e.target.value)}
               placeholder="Amount"
               disabled={!activeSub?.debt || lineDone.has('debt')}
-              className={`${inputClass} flex-1`}
+              className={`${compactInputClass} min-w-0 flex-1`}
             />
             <button
               type="button"
               onClick={() => toggleLine('debt')}
               disabled={!activeSub?.debt || lineDone.has('debt')}
-              className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold disabled:opacity-40 ${
+              className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold disabled:opacity-40 ${
                 selectedLines.has('debt') ? lineVibrantClass.debt : linePaleClass.debt
               }`}
             >
@@ -724,13 +724,13 @@ export function PaymentModal({
               }}
               placeholder="Amount"
               disabled={lineDone.has('products')}
-              className={`${inputClass} flex-1`}
+              className={`${compactInputClass} min-w-0 flex-1`}
             />
             <button
               type="button"
               onClick={() => toggleLine('products')}
               disabled={(existingProductsTotal <= 0 && newProductLines.length === 0) || lineDone.has('products')}
-              className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold disabled:opacity-40 ${
+              className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold disabled:opacity-40 ${
                 selectedLines.has('products') ? lineVibrantClass.products : linePaleClass.products
               }`}
             >
@@ -740,14 +740,14 @@ export function PaymentModal({
               type="button"
               onClick={() => setPickerOpen(true)}
               title="Add a product"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-600"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-600"
             >
               <Plus size={16} />
             </button>
           </div>
 
           {(openProducts.length > 0 || newProductLines.length > 0) && (
-            <div className="mb-4 space-y-1.5 pl-16">
+            <div className="mb-2 max-h-16 space-y-1 overflow-y-auto pl-16">
               {openProducts.map((m) => (
                 <div key={m.id} className="flex items-center justify-between text-xs text-neutral-500">
                   <span className="truncate">{m.products?.name ?? 'Product'} (outstanding)</span>
@@ -777,91 +777,89 @@ export function PaymentModal({
             </div>
           )}
 
-          <input
-            type="date"
-            aria-label="Payment date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className={`${inputClass} mb-4`}
-            required
-          />
+          <div className="mb-2 grid grid-cols-[1fr_auto] gap-2">
+            <input
+              type="date"
+              aria-label="Payment date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className={`${compactInputClass} min-w-0`}
+              required
+            />
+            <select
+              aria-label="Payment method"
+              value={method}
+              onChange={(e) => setMethod(e.target.value as 'cash' | 'whish')}
+              className={compactInputClass}
+            >
+              <option value="cash">Cash</option>
+              <option value="whish">Whish</option>
+            </select>
+          </div>
           <input
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Notes (optional)"
-            className={`${inputClass} mb-4`}
+            className={`${compactInputClass} mb-2`}
           />
           <textarea
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}
             disabled={feedbackSaved}
-            rows={2}
-            placeholder="Feedback for the admin (optional) -- complaint, problem, what they said"
-            className={`${inputClass} mb-4 disabled:opacity-60`}
+            rows={feedback ? 2 : 1}
+            placeholder="Feedback for the admin (optional)"
+            className={`${compactInputClass} mb-2 block disabled:opacity-60`}
           />
-          <select
-            value={method}
-            onChange={(e) => setMethod(e.target.value as 'cash' | 'whish')}
-            className={`${inputClass} mb-4`}
-          >
-            <option value="cash">Cash</option>
-            <option value="whish">Whish</option>
-          </select>
-          <select
-            value={collectorId}
-            onChange={(e) => setCollectorId(e.target.value)}
-            className={`${inputClass} mb-4`}
-          >
-            <option value="">Collector who collected this</option>
-            {collectors.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-
-          {!activeSub?.phone && (
-            <div className="mb-4 rounded-xl bg-neutral-50 p-3">
-              <input
-                type="tel"
-                value={phoneDraft}
-                onChange={(e) => setPhoneDraft(e.target.value)}
-                placeholder='Phone number (missing — add it to enable "Save & Notify")'
-                className={inputClass}
-              />
-            </div>
-          )}
-
-          <div className="mb-4 rounded-xl bg-neutral-50 p-3">
+          <div className="mb-2 flex items-center gap-2">
+            <select
+              aria-label="Collector who collected this"
+              value={collectorId}
+              onChange={(e) => setCollectorId(e.target.value)}
+              className={`${compactInputClass} min-w-0 flex-1`}
+            >
+              <option value="">Collector</option>
+              {collectors.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
             <button
               type="button"
               onClick={() => setPostponeOpen((v) => !v)}
-              className="flex items-center gap-2 text-sm font-medium text-neutral-700"
+              aria-expanded={postponeOpen}
+              className="flex shrink-0 items-center gap-1.5 rounded-md bg-neutral-100 px-2.5 py-2 text-sm font-medium text-neutral-700"
             >
               <Clock size={16} />
-              Postpone this payment
+              Postpone
             </button>
-            {postponeOpen && (
-              <div className="mt-3 flex gap-2">
-                <input
-                  type="number"
-                  min="1"
-                  value={postponeDays}
-                  onChange={(e) => setPostponeDays(e.target.value)}
-                  placeholder="Days"
-                  className={`${inputClass} flex-1`}
-                />
-                <button
-                  type="button"
-                  onClick={handlePostpone}
-                  disabled={postponing}
-                  className={dangerButtonClass}
-                >
-                  {postponing ? 'Postponing…' : 'Postpone'}
-                </button>
-              </div>
-            )}
           </div>
+          {postponeOpen && (
+            <div className="mb-2 flex gap-2">
+              <input
+                type="number"
+                min="1"
+                value={postponeDays}
+                onChange={(e) => setPostponeDays(e.target.value)}
+                placeholder="Days"
+                aria-label="Days to postpone"
+                className={`${compactInputClass} min-w-0 flex-1`}
+              />
+              <button type="button" onClick={handlePostpone} disabled={postponing} className={dangerButtonClass}>
+                {postponing ? 'Postponing…' : 'Postpone'}
+              </button>
+            </div>
+          )}
+
+          {!activeSub?.phone && (
+            <input
+              type="tel"
+              value={phoneDraft}
+              onChange={(e) => setPhoneDraft(e.target.value)}
+              placeholder="Phone (missing, needed to notify)"
+              className={`${compactInputClass} mb-2`}
+            />
+          )}
 
           <div className="flex flex-wrap justify-end gap-2">
             <button type="button" onClick={onClose} className={secondaryButtonClass}>

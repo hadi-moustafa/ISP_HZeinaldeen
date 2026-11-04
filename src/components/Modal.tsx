@@ -7,11 +7,15 @@ export function Modal({
   onClose,
   title,
   children,
+  compact = false,
 }: {
   open: boolean
   onClose: () => void
   title: string
   children: ReactNode
+  // Tighter, and sized to the visible screen (dvh excludes the phone
+  // browser's bars), for a form that has to fit without scrolling.
+  compact?: boolean
 }) {
   // Ref so the effect below doesn't need onClose in its dependency array --
   // parent components pass a fresh function every render, which would
@@ -54,11 +58,17 @@ export function Modal({
       onClick={onClose}
     >
       <div
-        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-lg bg-white p-4 dark:bg-neutral-800 sm:rounded-lg"
+        className={`w-full max-w-md overflow-y-auto rounded-t-lg bg-white dark:bg-neutral-800 sm:rounded-lg ${
+          compact ? 'max-h-[98dvh] p-3' : 'max-h-[90vh] p-4'
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+        <div className={`flex items-center justify-between ${compact ? 'mb-2' : 'mb-4'}`}>
+          <h2
+            className={`font-semibold text-neutral-900 dark:text-neutral-100 ${
+              compact ? 'truncate text-base' : 'text-lg'
+            }`}
+          >
             {title}
           </h2>
           <button
