@@ -69,8 +69,9 @@ export function DashboardPage() {
 
   // Search/filter/Paid-Unpaid survive closing the browser (localStorage);
   // only the Clear button resets them.
-  const [filters, setFilters] = useLocalStorageState('isp:dashboard-filters:filters', emptyFilters)
-  const [filterField, setFilterField] = useLocalStorageState<FilterField>('isp:dashboard-filters:field', 'name')
+  // v2 keys: see SubscribersListPage (Address became the default field).
+  const [filters, setFilters] = useLocalStorageState('isp:dashboard-filters:filters-v2', emptyFilters)
+  const [filterField, setFilterField] = useLocalStorageState<FilterField>('isp:dashboard-filters:field-v2', 'address')
   const [filterFieldMenuOpen, setFilterFieldMenuOpen] = useState(false)
   const [searchResults, setSearchResults] = useState<SubscriberWithRelations[]>([])
   // Paid / Unpaid toggle, applied on top of whatever search/filter is set.
@@ -528,7 +529,7 @@ export function DashboardPage() {
                   <button
                     onClick={() => {
                       setFilters(emptyFilters)
-                      setFilterField('name')
+                      setFilterField('address')
                       setPaidFilter('any')
                       setSortMode('expiry_asc')
                     }}

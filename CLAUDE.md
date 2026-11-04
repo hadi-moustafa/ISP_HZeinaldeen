@@ -150,7 +150,7 @@ The subscriber list (`src/pages/subscribers/SubscribersListPage.tsx`) was redesi
 - Left-side Pay button (`QuickPayButton` in `SubscriberRow.tsx`, shown only when the page passes `onQuickPay`; subscriber list only, not the dashboard). One tap opens the popup after a 300 ms wait for a second tap; two taps call `quickPay()` in `src/lib/subscriberRowHelpers.ts`.
 - `quickPay()` pays what's left of this month's bill through `pay_service_line` as cash, credited to the subscriber's default collector, dated today. No WhatsApp message; result shows in a toast. Doesn't touch products.
 - Not active, no service, or nothing left to pay -> opens the popup instead, no money moves. `pay_service_line` caps at what's owed, so a stale page can't overpay (toast says already paid).
-- Filter pickers (`FILTER_FIELDS`): Address is first. The default field is still Name.
+- Filter pickers (`FILTER_FIELDS`): Address is first and is the default field on the subscriber list and dashboard, and what Clear returns to. Their field and filter `localStorage` keys moved to `-v2` so existing devices pick it up (the hook saves its default immediately, so they all had `name` stored).
 
 ## Address filter: building order + "And also" (2026-10-06)
 

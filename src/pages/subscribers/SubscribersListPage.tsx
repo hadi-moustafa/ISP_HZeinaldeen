@@ -43,8 +43,12 @@ import { useLocalStorageState } from '../../lib/useLocalStorageState'
 
 export function SubscribersListPage() {
   const { staff } = useStaff()
-  const [filters, setFilters] = useLocalStorageState('isp:subscribers-filters:filters', emptyFilters)
-  const [filterField, setFilterField] = useLocalStorageState<FilterField>('isp:subscribers-filters:field', 'name')
+  // v2 keys: the hook saves its default straight away, so every device
+  // already had 'name' stored and wouldn't pick up Address as the default.
+  // Filters move too, so a value left in another field can't keep narrowing
+  // the list from behind the Address picker.
+  const [filters, setFilters] = useLocalStorageState('isp:subscribers-filters:filters-v2', emptyFilters)
+  const [filterField, setFilterField] = useLocalStorageState<FilterField>('isp:subscribers-filters:field-v2', 'address')
   const [searchFieldMenuOpen, setSearchFieldMenuOpen] = useState(false)
   const [postponingId, setPostponingId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -199,11 +203,11 @@ export function SubscribersListPage() {
     }).length +
     (billingFilter !== 'any' ? 1 : 0) +
     (sortMode !== 'expiry_asc' ? 1 : 0) +
-    (filterField !== 'name' ? 1 : 0)
+    (filterField !== 'address' ? 1 : 0)
 
   function clearAllFilters() {
     setFilters(emptyFilters)
-    setFilterField('name')
+    setFilterField('address')
     setBillingFilter('any')
     setSortMode('expiry_asc')
   }
