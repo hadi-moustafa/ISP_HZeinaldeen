@@ -91,6 +91,12 @@ export function SubscriberRow({
   // Two Pay buttons leave little width on a phone: wrap instead of cutting
   // off the name and expiry day, and shrink the right one to its icon.
   const textFit = onQuickPay ? 'line-clamp-2 break-words' : 'truncate'
+  const statusBadge = (margin: string) =>
+    sub.connection_status !== 'active' && (
+      <span className={`${margin} rounded bg-neutral-200 px-1 py-0.5 text-[9px] font-medium uppercase text-neutral-600`}>
+        {sub.connection_status}
+      </span>
+    )
   return (
     <div className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2">
       {onQuickPay && (
@@ -114,13 +120,11 @@ export function SubscriberRow({
       <Link to={`/subscribers/${sub.id}`} className="min-w-0 flex-1">
         <p className={`${textFit} text-sm font-semibold text-neutral-900`}>
           {sub.name}
-          {sub.connection_status !== 'active' && (
-            <span className="ml-1.5 rounded bg-neutral-200 px-1 py-0.5 text-[9px] font-medium uppercase text-neutral-600">
-              {sub.connection_status}
-            </span>
-          )}
+          {!onQuickPay && statusBadge('ml-1.5')}
         </p>
         <p className={`${textFit} text-xs text-neutral-500`}>
+          {/* Here, not after the name, where wrapping could clip it. */}
+          {onQuickPay && statusBadge('mr-1.5')}
           {showBuilding && <span className="font-medium text-neutral-700">{sub.building?.trim() || 'No building'} · </span>}
           {sub.services?.companies?.name ?? '—'}
           {day !== null ? ` · exp ${day}` : ''}
