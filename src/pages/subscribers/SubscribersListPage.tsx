@@ -27,7 +27,7 @@ import { HeaderActions } from '../../components/AppHeader'
 import { PaymentModal } from '../../components/subscriber/PaymentModal'
 import { SubscriberRow } from '../../components/subscriber/SubscriberRow'
 import { currentPeriodMonth, quickPostpone, quickPay, billingKeyFor } from '../../lib/subscriberRowHelpers'
-import { SORT_OPTIONS, isBuildingSort, sortSubscribers, type SubscriberSort } from '../../lib/subscriberSort'
+import { SORT_OPTIONS, isAddressSort, isBuildingSort, sortSubscribers, type SubscriberSort } from '../../lib/subscriberSort'
 import { AddressRefine } from '../../components/subscriber/AddressRefine'
 import { exportToExcel } from '../../lib/exportExcel'
 import { useLocalStorageState } from '../../lib/useLocalStorageState'
@@ -53,9 +53,9 @@ export function SubscribersListPage() {
   const [postponingId, setPostponingId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [quickPayingId, setQuickPayingId] = useState<string | null>(null)
-  // Result of a double-tap Pay. Floats over the list, since the row tapped
-  // can be far below the page's error line.
-  const [quickPayNotice, setQuickPayNotice] = useState<{ text: string; failed: boolean } | null>(null)
+  // Result of the left Pay button. Floats over the list, since the row
+  // pressed can be far below the page's error line.
+  const [quickPayNotice, setQuickPayNotice] = useState<{ text: string; kind: 'paid' | 'info' | 'error' } | null>(null)
 
   // Which subscriber the shared PaymentModal is open for, if any --
   // PaymentModal owns all of its own form state.
@@ -261,31 +261,30 @@ export function SubscribersListPage() {
     return () => clearTimeout(timer)
   }, [quickPayNotice])
 
-  async function handleQuickPay(sub: SubscriberWithRelations) {
+  async function handleHoldPay(sub: SubscriberWithRelations) {
     setQuickPayingId(sub.id)
     try {
-      const applied = await quickPay(sub, monthlyLogBySubscriber[sub.id], staff?.id ?? null)
-      if (applied === null) {
-        setPaymentSub(sub)
+      const result = await quickPay(sub, monthlyLogBySubscriber[sub.id], staff?.id ?? null)
+      if ('blocked' in result) {
+        setQuickPayNotice({ text: result.blocked, kind: 'info' })
         return
       }
-      if (applied > 0) {
+      if (result.applied > 0) {
         logActivity(
           staff?.id ?? null,
-          `${staff?.username ?? 'Someone'} logged a service payment of ${applied} for subscriber ${sub.name} (double-tap Pay)`,
+          `${staff?.username ?? 'Someone'} logged a service payment of ${result.applied} for subscriber ${sub.name} (hold-to-pay)`,
           'payment',
           sub.id,
         )
+        setQuickPayNotice({ text: `Paid ${result.applied} for ${sub.name}`, kind: 'paid' })
+      } else {
+        setQuickPayNotice({ text: `${sub.name} has nothing left to pay this month`, kind: 'info' })
       }
-      setQuickPayNotice({
-        text: applied > 0 ? `Paid ${applied} for ${sub.name}` : `${sub.name} has already paid this month`,
-        failed: false,
-      })
       await refreshBillingData()
     } catch (err) {
       setQuickPayNotice({
         text: `${sub.name}: ${err instanceof Error ? err.message : 'payment failed'}`,
-        failed: true,
+        kind: 'error',
       })
     } finally {
       setQuickPayingId(null)
@@ -705,14 +704,16 @@ export function SubscribersListPage() {
         {displaySubscribers.map((sub) => (
           <SubscriberRow
             showBuilding={isBuildingSort(sortMode)}
+            showAddress={isAddressSort(sortMode)}
             key={sub.id}
             sub={sub}
             log={monthlyLogBySubscriber[sub.id]}
             selected={selectedIds.has(sub.id)}
             onToggleSelect={toggleSelect}
             onPay={setPaymentSub}
-            onQuickPay={handleQuickPay}
-            quickPaying={quickPayingId === sub.id}
+            onHoldPay={handleHoldPay}
+            onHoldPayTap={() => setQuickPayNotice({ text: 'Press and hold Pay to charge', kind: 'info' })}
+            holdPaying={quickPayingId === sub.id}
             onPostpone={handleQuickPostpone}
             postponing={postponingId === sub.id}
           />
@@ -725,8 +726,12 @@ export function SubscribersListPage() {
       {quickPayNotice && (
         <div
           role="status"
-          className={`fixed inset-x-4 bottom-4 z-30 mx-auto max-w-sm rounded-xl px-4 py-3 text-center text-sm font-semibold text-white shadow-lg ${
-            quickPayNotice.failed ? 'bg-red-600' : 'bg-emerald-600'
+          className={`pointer-events-none fixed inset-x-4 bottom-4 z-30 mx-auto max-w-sm rounded-xl px-4 py-3 text-center text-sm font-semibold text-white shadow-lg ${
+            quickPayNotice.kind === 'error'
+              ? 'bg-red-600'
+              : quickPayNotice.kind === 'paid'
+                ? 'bg-emerald-600'
+                : 'bg-neutral-800'
           }`}
         >
           {quickPayNotice.text}

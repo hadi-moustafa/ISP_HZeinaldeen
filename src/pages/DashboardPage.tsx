@@ -30,7 +30,7 @@ import { FILTER_FIELDS, TEXT_FILTER_FIELDS, type FilterField } from '../lib/subs
 import { AppHeader } from '../components/AppHeader'
 import { PaymentModal } from '../components/subscriber/PaymentModal'
 import { AddressRefine } from '../components/subscriber/AddressRefine'
-import { SORT_OPTIONS, isBuildingSort, sortSubscribers, type SubscriberSort } from '../lib/subscriberSort'
+import { SORT_OPTIONS, isAddressSort, isBuildingSort, sortSubscribers, type SubscriberSort } from '../lib/subscriberSort'
 import { SubscriberRow } from '../components/subscriber/SubscriberRow'
 import { currentPeriodMonth, quickPostpone, billingKeyFor } from '../lib/subscriberRowHelpers'
 import { cardClass } from '../lib/uiClasses'
@@ -545,6 +545,7 @@ export function DashboardPage() {
               {displayedResults.map((sub) => (
                 <SubscriberRow
                   showBuilding={isBuildingSort(sortMode)}
+                  showAddress={isAddressSort(sortMode)}
                   key={sub.id}
                   sub={sub}
                   log={monthlyLogBySubscriber[sub.id]}

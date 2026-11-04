@@ -1,59 +1,98 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Banknote, Pencil, Clock, Loader2 } from 'lucide-react'
 import { statusDotColor, expiryDay } from '../../lib/subscriberRowHelpers'
 import type { SubscriberWithRelations } from '../../types/subscribers'
 import type { MonthlyLogRow } from '../../types/reports'
 
-// How long to wait for a second tap before treating it as a single tap.
-const DOUBLE_TAP_MS = 300
+// How long the left Pay button has to be held before it pays.
+const HOLD_MS = 700
 
-// One tap opens the popup, two taps pay straight away. Counts clicks itself
-// rather than using onDoubleClick, since a single tap has to wait to see
-// whether a second one follows (otherwise the popup would cover the button).
-function QuickPayButton({
+// Press and hold pays straight away; a quick tap only says how it works, so
+// it can't take money by accident. Scrolling a phone cancels the press
+// (pointercancel), and so does sliding off the button.
+function HoldToPayButton({
   name,
   busy,
-  onSingleTap,
-  onDoubleTap,
+  onTap,
+  onHold,
 }: {
   name: string
   busy: boolean
-  onSingleTap: () => void
-  onDoubleTap: () => void
+  onTap: () => void
+  onHold: () => void
 }) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(
-    () => () => {
-      if (timer.current) clearTimeout(timer.current)
-    },
-    [],
-  )
+  // The click that follows a completed hold mustn't count as a tap.
+  const held = useRef(false)
+  const [pressing, setPressing] = useState(false)
 
-  function handleClick() {
-    if (timer.current) {
-      clearTimeout(timer.current)
-      timer.current = null
-      onDoubleTap()
-      return
-    }
+  function stopTimer() {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = null
+  }
+  useEffect(() => stopTimer, [])
+
+  function startPress() {
+    stopTimer()
+    held.current = false
+    setPressing(true)
     timer.current = setTimeout(() => {
       timer.current = null
-      onSingleTap()
-    }, DOUBLE_TAP_MS)
+      held.current = true
+      setPressing(false)
+      onHold()
+    }, HOLD_MS)
   }
+
+  function cancelPress() {
+    stopTimer()
+    setPressing(false)
+  }
+
+  const isActivationKey = (key: string) => key === 'Enter' || key === ' '
 
   return (
     <button
       type="button"
-      onClick={handleClick}
       disabled={busy}
-      title="Tap to open Pay. Tap twice to pay this month's bill right away (cash)."
-      aria-label={`Pay ${name}`}
-      style={{ touchAction: 'manipulation' }}
-      className="shrink-0 rounded-full bg-emerald-500 px-2.5 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+      onPointerDown={(e) => {
+        if (e.button === 0) startPress()
+      }}
+      onPointerUp={cancelPress}
+      onPointerLeave={cancelPress}
+      onPointerCancel={cancelPress}
+      onKeyDown={(e) => {
+        if (!isActivationKey(e.key)) return
+        e.preventDefault()
+        if (!e.repeat) startPress()
+      }}
+      onKeyUp={(e) => {
+        if (!isActivationKey(e.key)) return
+        e.preventDefault()
+        const wasTap = timer.current !== null
+        cancelPress()
+        if (wasTap) onTap()
+      }}
+      onBlur={cancelPress}
+      onClick={() => {
+        if (!held.current) onTap()
+        held.current = false
+      }}
+      // A long press on a phone would otherwise open the browser's own menu.
+      onContextMenu={(e) => e.preventDefault()}
+      title="Press and hold to pay this month's bill (cash)"
+      aria-label={`Press and hold to pay ${name}`}
+      style={{ touchAction: 'manipulation', WebkitTouchCallout: 'none' }}
+      className="relative shrink-0 select-none overflow-hidden rounded-full bg-emerald-500 px-2.5 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
     >
-      {busy ? <Loader2 size={14} className="animate-spin" /> : 'Pay'}
+      {/* Fills while held, so it's clear the press is counting. */}
+      <span
+        aria-hidden="true"
+        className="absolute inset-y-0 left-0 bg-emerald-800"
+        style={{ width: pressing ? '100%' : 0, transition: pressing ? `width ${HOLD_MS}ms linear` : 'none' }}
+      />
+      <span className="relative">{busy ? <Loader2 size={14} className="animate-spin" /> : 'Pay'}</span>
     </button>
   )
 }
@@ -66,31 +105,36 @@ export function SubscriberRow({
   sub,
   log,
   onPay,
-  onQuickPay,
-  quickPaying = false,
+  onHoldPay,
+  onHoldPayTap,
+  holdPaying = false,
   onPostpone,
   postponing = false,
   selected,
   onToggleSelect,
   showBuilding = false,
+  showAddress = false,
 }: {
   sub: SubscriberWithRelations
   log: MonthlyLogRow | undefined
   onPay: (sub: SubscriberWithRelations) => void
-  // Adds the left-side Pay button (subscriber list only).
-  onQuickPay?: (sub: SubscriberWithRelations) => void
-  quickPaying?: boolean
+  // Adds the left-side hold-to-pay button (subscriber list only).
+  onHoldPay?: (sub: SubscriberWithRelations) => void
+  onHoldPayTap?: (sub: SubscriberWithRelations) => void
+  holdPaying?: boolean
   onPostpone?: (sub: SubscriberWithRelations) => void
   postponing?: boolean
   selected?: boolean
   onToggleSelect?: (id: string) => void
   // Building order: show each row's building, so the order is visible.
   showBuilding?: boolean
+  // Address order: same, for the address.
+  showAddress?: boolean
 }) {
   const day = expiryDay(sub.expiry_date)
   // Two Pay buttons leave little width on a phone: wrap instead of cutting
   // off the name and expiry day, and shrink the right one to its icon.
-  const textFit = onQuickPay ? 'line-clamp-2 break-words' : 'truncate'
+  const textFit = onHoldPay ? 'line-clamp-2 break-words' : 'truncate'
   const statusBadge = (margin: string) =>
     sub.connection_status !== 'active' && (
       <span className={`${margin} rounded bg-neutral-200 px-1 py-0.5 text-[9px] font-medium uppercase text-neutral-600`}>
@@ -99,12 +143,12 @@ export function SubscriberRow({
     )
   return (
     <div className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2">
-      {onQuickPay && (
-        <QuickPayButton
+      {onHoldPay && (
+        <HoldToPayButton
           name={sub.name}
-          busy={quickPaying}
-          onSingleTap={() => onPay(sub)}
-          onDoubleTap={() => onQuickPay(sub)}
+          busy={holdPaying}
+          onTap={() => onHoldPayTap?.(sub)}
+          onHold={() => onHoldPay(sub)}
         />
       )}
       {onToggleSelect && (
@@ -120,11 +164,17 @@ export function SubscriberRow({
       <Link to={`/subscribers/${sub.id}`} className="min-w-0 flex-1">
         <p className={`${textFit} text-sm font-semibold text-neutral-900`}>
           {sub.name}
-          {!onQuickPay && statusBadge('ml-1.5')}
+          {!onHoldPay && statusBadge('ml-1.5')}
         </p>
+        {/* Its own line, so it doesn't push the expiry day out of view. */}
+        {showAddress && (
+          <p className="truncate text-xs font-medium text-neutral-700">
+            {[sub.addresses?.name, sub.building?.trim()].filter(Boolean).join(', ') || 'No address'}
+          </p>
+        )}
         <p className={`${textFit} text-xs text-neutral-500`}>
           {/* Here, not after the name, where wrapping could clip it. */}
-          {onQuickPay && statusBadge('mr-1.5')}
+          {onHoldPay && statusBadge('mr-1.5')}
           {showBuilding && <span className="font-medium text-neutral-700">{sub.building?.trim() || 'No building'} · </span>}
           {sub.services?.companies?.name ?? '—'}
           {day !== null ? ` · exp ${day}` : ''}
@@ -152,11 +202,11 @@ export function SubscriberRow({
         title="Log a payment"
         aria-label="Log a payment"
         className={`flex shrink-0 items-center gap-1 rounded-full bg-emerald-500 text-xs font-semibold text-white ${
-          onQuickPay ? 'p-2' : 'px-3 py-1.5'
+          onHoldPay ? 'p-2' : 'px-3 py-1.5'
         }`}
       >
         <Banknote size={14} />
-        {!onQuickPay && 'Pay'}
+        {!onHoldPay && 'Pay'}
       </button>
     </div>
   )

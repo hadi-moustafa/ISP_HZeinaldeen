@@ -54,23 +54,24 @@ export function expiryDay(expiryDate: string | null): number | null {
   return expiryDate ? new Date(expiryDate + 'T00:00:00Z').getUTCDate() : null
 }
 
-// Double-tap Pay on the subscriber list: pays what's left of this month's
+// Press-and-hold Pay on the subscriber list: pays what's left of this month's
 // bill (which includes anything carried into it) in cash, credited to the
 // subscriber's own collector, without the popup. Returns the amount recorded
 // (0 if someone else already paid it since this page loaded -- pay_service_line
-// caps at what's really owed), or null when this subscriber needs the popup:
-// not active, no service, or nothing left to pay this month.
+// caps at what's really owed), or why nothing was charged: not active, no
+// service, or nothing left to pay this month.
 export async function quickPay(
   sub: SubscriberWithRelations,
   log: MonthlyLogRow | undefined,
   staffId: string | null,
-): Promise<number | null> {
-  if (sub.connection_status !== 'active' || !sub.service_id) return null
-  if (log?.status === 'paid' || log?.status === 'waived') return null
+): Promise<{ applied: number } | { blocked: string }> {
+  if (sub.connection_status !== 'active') return { blocked: `${sub.name} is ${sub.connection_status}, not charged` }
+  if (!sub.service_id) return { blocked: `${sub.name} has no service, not charged` }
+  if (log?.status === 'paid' || log?.status === 'waived') return { blocked: `${sub.name} has nothing left to pay this month` }
   const amount = round2(
     log ? Math.max(log.amount_due - log.amount_paid, 0) : await computeInvoiceAmount(sub.id, currentPeriodMonth()),
   )
-  if (amount <= 0) return null
+  if (amount <= 0) return { blocked: `${sub.name} has nothing left to pay this month` }
   // Local getters, never toISOString() -- same reason as quickPostpone.
   const now = new Date()
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
@@ -85,7 +86,7 @@ export async function quickPay(
     collectorId: sub.default_collector_id,
     staffId,
   })
-  return result.applied
+  return { applied: result.applied }
 }
 
 // Smallest expiry day first (client instruction: every list reads smallest
