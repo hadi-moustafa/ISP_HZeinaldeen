@@ -26,7 +26,7 @@ import { useStaff } from '../../context/StaffContext'
 import { HeaderActions } from '../../components/AppHeader'
 import { PaymentModal } from '../../components/subscriber/PaymentModal'
 import { SubscriberRow } from '../../components/subscriber/SubscriberRow'
-import { currentPeriodMonth, quickPostpone, billingKeyFor } from '../../lib/subscriberRowHelpers'
+import { currentPeriodMonth, quickPostpone, quickPay, billingKeyFor } from '../../lib/subscriberRowHelpers'
 import { SORT_OPTIONS, isBuildingSort, sortSubscribers, type SubscriberSort } from '../../lib/subscriberSort'
 import { AddressRefine } from '../../components/subscriber/AddressRefine'
 import { exportToExcel } from '../../lib/exportExcel'
@@ -48,6 +48,10 @@ export function SubscribersListPage() {
   const [searchFieldMenuOpen, setSearchFieldMenuOpen] = useState(false)
   const [postponingId, setPostponingId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [quickPayingId, setQuickPayingId] = useState<string | null>(null)
+  // Result of a double-tap Pay. Floats over the list, since the row tapped
+  // can be far below the page's error line.
+  const [quickPayNotice, setQuickPayNotice] = useState<{ text: string; failed: boolean } | null>(null)
 
   // Which subscriber the shared PaymentModal is open for, if any --
   // PaymentModal owns all of its own form state.
@@ -244,6 +248,43 @@ export function SubscribersListPage() {
       setError(err instanceof Error ? err.message : 'Failed to postpone')
     } finally {
       setPostponingId(null)
+    }
+  }
+
+  useEffect(() => {
+    if (!quickPayNotice) return
+    const timer = setTimeout(() => setQuickPayNotice(null), 5000)
+    return () => clearTimeout(timer)
+  }, [quickPayNotice])
+
+  async function handleQuickPay(sub: SubscriberWithRelations) {
+    setQuickPayingId(sub.id)
+    try {
+      const applied = await quickPay(sub, monthlyLogBySubscriber[sub.id], staff?.id ?? null)
+      if (applied === null) {
+        setPaymentSub(sub)
+        return
+      }
+      if (applied > 0) {
+        logActivity(
+          staff?.id ?? null,
+          `${staff?.username ?? 'Someone'} logged a service payment of ${applied} for subscriber ${sub.name} (double-tap Pay)`,
+          'payment',
+          sub.id,
+        )
+      }
+      setQuickPayNotice({
+        text: applied > 0 ? `Paid ${applied} for ${sub.name}` : `${sub.name} has already paid this month`,
+        failed: false,
+      })
+      await refreshBillingData()
+    } catch (err) {
+      setQuickPayNotice({
+        text: `${sub.name}: ${err instanceof Error ? err.message : 'payment failed'}`,
+        failed: true,
+      })
+    } finally {
+      setQuickPayingId(null)
     }
   }
 
@@ -666,6 +707,8 @@ export function SubscribersListPage() {
             selected={selectedIds.has(sub.id)}
             onToggleSelect={toggleSelect}
             onPay={setPaymentSub}
+            onQuickPay={handleQuickPay}
+            quickPaying={quickPayingId === sub.id}
             onPostpone={handleQuickPostpone}
             postponing={postponingId === sub.id}
           />
@@ -674,6 +717,17 @@ export function SubscribersListPage() {
           <p className="text-neutral-500 dark:text-neutral-400">No subscribers match these filters.</p>
         )}
       </div>
+
+      {quickPayNotice && (
+        <div
+          role="status"
+          className={`fixed inset-x-4 bottom-4 z-30 mx-auto max-w-sm rounded-xl px-4 py-3 text-center text-sm font-semibold text-white shadow-lg ${
+            quickPayNotice.failed ? 'bg-red-600' : 'bg-emerald-600'
+          }`}
+        >
+          {quickPayNotice.text}
+        </div>
+      )}
 
       <PaymentModal
         subscriber={paymentSub}

@@ -1,4 +1,5 @@
-import { postponeInvoice, createPeriodInvoice } from './api/invoices'
+import { postponeInvoice, createPeriodInvoice, computeInvoiceAmount, payServiceLine } from './api/invoices'
+import { round2 } from './money'
 import { listMonthlyLog } from './api/reports'
 import type { SubscriberWithRelations } from '../types/subscribers'
 import type { MonthlyLogRow } from '../types/reports'
@@ -51,6 +52,40 @@ export function statusDotColor(log: MonthlyLogRow | undefined, debt: number): st
 // which shifts a day west of UTC.
 export function expiryDay(expiryDate: string | null): number | null {
   return expiryDate ? new Date(expiryDate + 'T00:00:00Z').getUTCDate() : null
+}
+
+// Double-tap Pay on the subscriber list: pays what's left of this month's
+// bill (which includes anything carried into it) in cash, credited to the
+// subscriber's own collector, without the popup. Returns the amount recorded
+// (0 if someone else already paid it since this page loaded -- pay_service_line
+// caps at what's really owed), or null when this subscriber needs the popup:
+// not active, no service, or nothing left to pay this month.
+export async function quickPay(
+  sub: SubscriberWithRelations,
+  log: MonthlyLogRow | undefined,
+  staffId: string | null,
+): Promise<number | null> {
+  if (sub.connection_status !== 'active' || !sub.service_id) return null
+  if (log?.status === 'paid' || log?.status === 'waived') return null
+  const amount = round2(
+    log ? Math.max(log.amount_due - log.amount_paid, 0) : await computeInvoiceAmount(sub.id, currentPeriodMonth()),
+  )
+  if (amount <= 0) return null
+  // Local getters, never toISOString() -- same reason as quickPostpone.
+  const now = new Date()
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const result = await payServiceLine({
+    subscriberId: sub.id,
+    amount,
+    choice: null,
+    newPrice: false,
+    paymentDate: today,
+    method: 'cash',
+    note: null,
+    collectorId: sub.default_collector_id,
+    staffId,
+  })
+  return result.applied
 }
 
 // Smallest expiry day first (client instruction: every list reads smallest

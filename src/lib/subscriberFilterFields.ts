@@ -17,7 +17,9 @@ export type FilterField =
   | 'expiry'
   | 'connection'
 
+// Address first: it's the most used filter.
 export const FILTER_FIELDS: { value: FilterField; label: string }[] = [
+  { value: 'address', label: 'Address' },
   { value: 'name', label: 'Name' },
   { value: 'id', label: 'ID' },
   { value: 'owner', label: 'Owner' },
@@ -28,7 +30,6 @@ export const FILTER_FIELDS: { value: FilterField; label: string }[] = [
   { value: 'collector', label: 'Collector' },
   { value: 'company', label: 'Company' },
   { value: 'service', label: 'Service' },
-  { value: 'address', label: 'Address' },
   { value: 'status', label: 'Connection status' },
   { value: 'expiry', label: 'Expiry date' },
   { value: 'connection', label: 'Connection date' },

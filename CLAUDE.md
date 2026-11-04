@@ -145,6 +145,13 @@ The subscriber list (`src/pages/subscribers/SubscribersListPage.tsx`) was redesi
 - Subscriber list: Add button shrank to an icon-only circular `+`; Export moved into the header via `HeaderActions`; each card gained a top-left checkbox (wired to Export — exports only the selected rows when any are selected, otherwise the current filtered list) and a Pay button (opens the same payment-logging modal pattern as `InvoicesSection`/`OfflinePage`, disabled when the subscriber has no invoice for the current period).
 - `monthly_log` view gained a trailing `invoice_id` column (`0006_monthly_log_invoice_id.sql`) so the list's Pay button can log a payment against the correct invoice without a second round-trip per row. Real gotcha hit live: `CREATE OR REPLACE VIEW` only allows *appending* trailing columns — putting `invoice_id` first in the SELECT list failed against the real project; it has to go last.
 
+## Double-tap Pay on the subscriber list (2026-11-04)
+
+- Left-side Pay button (`QuickPayButton` in `SubscriberRow.tsx`, shown only when the page passes `onQuickPay`; subscriber list only, not the dashboard). One tap opens the popup after a 300 ms wait for a second tap; two taps call `quickPay()` in `src/lib/subscriberRowHelpers.ts`.
+- `quickPay()` pays what's left of this month's bill through `pay_service_line` as cash, credited to the subscriber's default collector, dated today. No WhatsApp message; result shows in a toast. Doesn't touch products.
+- Not active, no service, or nothing left to pay -> opens the popup instead, no money moves. `pay_service_line` caps at what's owed, so a stale page can't overpay (toast says already paid).
+- Filter pickers (`FILTER_FIELDS`): Address is first. The default field is still Name.
+
 ## Address filter: building order + "And also" (2026-10-06)
 
 - Sorting for both the subscriber list and dashboard search lives in `src/lib/subscriberSort.ts` (`sortSubscribers`, `SORT_OPTIONS`): Expiry ↑/↓ (default ↑), Building ↑/↓, Name A→Z/Z→A. Building is free text, so it's a natural, case-insensitive sort ("Bldg 2" before "Bldg 10"); blank buildings always last, ties by name.
